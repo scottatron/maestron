@@ -23,6 +23,9 @@ func ListSessions(filter SessionFilter) ([]SessionGroup, error) {
 	if sessions, err := listOpenCodeSessions(); err == nil {
 		all = append(all, sessions...)
 	}
+	if sessions, err := listCopilotSessions(); err == nil {
+		all = append(all, sessions...)
+	}
 
 	// Apply filters
 	cutoff := time.Time{}
