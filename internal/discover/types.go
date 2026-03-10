@@ -77,6 +77,7 @@ type MCPServerInfo struct {
 	Command   string            `json:"command"`
 	Args      []string          `json:"args"`
 	Env       map[string]string `json:"env,omitempty"`
+	URL       string            `json:"url,omitempty"`
 	Transport string            `json:"transport"`
 	Targets   []string          `json:"targets"`
 	Enabled   bool              `json:"enabled"`

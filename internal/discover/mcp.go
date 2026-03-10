@@ -3,6 +3,9 @@ package discover
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
+
+	"github.com/BurntSushi/toml"
 
 	"github.com/scottatron/maestron/internal/agents"
 	"github.com/scottatron/maestron/internal/platform"
@@ -19,12 +22,38 @@ type claudeMCPServer struct {
 	Env     map[string]string `json:"env,omitempty"`
 }
 
-// ListMCPServers returns all configured MCP servers from agents.json and Claude settings.
+// copilotMCPConfig represents ~/.copilot/mcp-config.json
+type copilotMCPConfig struct {
+	MCPServers map[string]copilotMCPServer `json:"mcpServers"`
+}
+
+type copilotMCPServer struct {
+	Type    string            `json:"type"` // "local" or "http"
+	Command string            `json:"command"`
+	Args    []string          `json:"args"`
+	Env     map[string]string `json:"env,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+	Tools   []string          `json:"tools,omitempty"`
+}
+
+// codexConfig represents the MCP-relevant parts of ~/.codex/config.toml
+type codexConfig struct {
+	MCPServers map[string]codexMCPServer `toml:"mcp_servers"`
+}
+
+type codexMCPServer struct {
+	Command string   `toml:"command"`
+	Args    []string `toml:"args"`
+}
+
+// ListMCPServers returns all configured MCP servers from all known sources.
+// Priority: agents.json > ~/.claude/settings.json > ~/.copilot/mcp-config.json > ~/.codex/config.toml
 func ListMCPServers() ([]MCPServerInfo, error) {
 	seen := map[string]bool{}
 	var result []MCPServerInfo
 
-	// 1. agents.json (takes priority)
+	// 1. agents.json (highest priority)
 	_, cfg, err := agents.FindAgentsConfig()
 	if err == nil && cfg != nil {
 		for name, def := range cfg.MCP.Servers {
@@ -44,8 +73,7 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 	}
 
 	// 2. ~/.claude/settings.json
-	settingsFile, err := platform.ClaudeSettingsFile()
-	if err == nil {
+	if settingsFile, err := platform.ClaudeSettingsFile(); err == nil {
 		if data, err := os.ReadFile(settingsFile); err == nil {
 			var cs claudeSettings
 			if json.Unmarshal(data, &cs) == nil {
@@ -53,6 +81,7 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 					if seen[name] {
 						continue
 					}
+					seen[name] = true
 					result = append(result, MCPServerInfo{
 						Name:      name,
 						Command:   srv.Command,
@@ -61,6 +90,62 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 						Transport: "stdio",
 						Enabled:   true,
 						Source:    "claude-settings",
+					})
+				}
+			}
+		}
+	}
+
+	// 3. ~/.copilot/mcp-config.json
+	if home, err := platform.HomeDir(); err == nil {
+		copilotPath := filepath.Join(home, ".copilot", "mcp-config.json")
+		if data, err := os.ReadFile(copilotPath); err == nil {
+			var cc copilotMCPConfig
+			if json.Unmarshal(data, &cc) == nil {
+				for name, srv := range cc.MCPServers {
+					if seen[name] {
+						continue
+					}
+					seen[name] = true
+					transport := "stdio"
+					if srv.Type == "http" {
+						transport = "http"
+					}
+					result = append(result, MCPServerInfo{
+						Name:      name,
+						Command:   srv.Command,
+						Args:      srv.Args,
+						Env:       srv.Env,
+						URL:       srv.URL,
+						Transport: transport,
+						Targets:   []string{"copilot"},
+						Enabled:   true,
+						Source:    "copilot-mcp-config",
+					})
+				}
+			}
+		}
+	}
+
+	// 4. ~/.codex/config.toml
+	if home, err := platform.HomeDir(); err == nil {
+		codexPath := filepath.Join(home, ".codex", "config.toml")
+		if data, err := os.ReadFile(codexPath); err == nil {
+			var dc codexConfig
+			if toml.Unmarshal(data, &dc) == nil {
+				for name, srv := range dc.MCPServers {
+					if seen[name] {
+						continue
+					}
+					seen[name] = true
+					result = append(result, MCPServerInfo{
+						Name:      name,
+						Command:   srv.Command,
+						Args:      srv.Args,
+						Transport: "stdio",
+						Targets:   []string{"codex"},
+						Enabled:   true,
+						Source:    "codex-config",
 					})
 				}
 			}
