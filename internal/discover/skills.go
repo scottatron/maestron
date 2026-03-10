@@ -30,6 +30,11 @@ func ListSkills() ([]SkillInfo, error) {
 		}
 	}
 
+	// User-global skills from ~/.agents/skills/
+	if globalSkills, err := discoverGlobalAgentSkills(); err == nil {
+		skills = append(skills, globalSkills...)
+	}
+
 	// Claude native skills from plugins cache
 	if claudeSkills, err := discoverClaudeNativeSkills(); err == nil {
 		skills = append(skills, claudeSkills...)
@@ -49,8 +54,19 @@ func ListSkills() ([]SkillInfo, error) {
 	return deduped, nil
 }
 
+func discoverGlobalAgentSkills() ([]SkillInfo, error) {
+	home, err := platform.HomeDir()
+	if err != nil {
+		return nil, err
+	}
+	return discoverSkillsDir(filepath.Join(home, ".agents", "skills"), "global")
+}
+
 func discoverSquadSkills(squadRoot string) ([]SkillInfo, error) {
-	skillsDir := filepath.Join(squadRoot, ".agents", "skills")
+	return discoverSkillsDir(filepath.Join(squadRoot, ".agents", "skills"), "squad")
+}
+
+func discoverSkillsDir(skillsDir, source string) ([]SkillInfo, error) {
 	entries, err := os.ReadDir(skillsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -65,7 +81,7 @@ func discoverSquadSkills(squadRoot string) ([]SkillInfo, error) {
 			continue
 		}
 		skillPath := filepath.Join(skillsDir, entry.Name(), "SKILL.md")
-		skill, err := loadSkillFromPath(skillPath, "squad")
+		skill, err := loadSkillFromPath(skillPath, source)
 		if err != nil {
 			continue
 		}
