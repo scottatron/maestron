@@ -1,0 +1,14 @@
+[tools]
+go = "latest"
+
+[tasks.build]
+run = "go build -o maestron ."
+description = "Build maestron binary"
+
+[tasks.test]
+run = "go test ./..."
+description = "Run tests"
+
+[tasks.install]
+run = "go install ."
+description = "Install maestron to GOPATH/bin"
