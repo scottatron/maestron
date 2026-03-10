@@ -57,13 +57,13 @@ func renderSkillsTable(skills []discover.SkillInfo) {
 		fmt.Println("No skills found.")
 		return
 	}
-	t := output.NewTable(os.Stdout, []string{"NAME", "SOURCE", "DESCRIPTION"})
+	t := output.NewTable(os.Stdout, []string{"NAME", "SOURCE", "PATH", "DESCRIPTION"})
 	for _, s := range skills {
 		desc := s.Description
-		if len(desc) > 80 {
-			desc = desc[:77] + "..."
+		if len(desc) > 60 {
+			desc = desc[:57] + "..."
 		}
-		t.Row(s.Name, s.Source, desc)
+		t.Row(s.Name, s.Source, s.Path, desc)
 	}
 	t.Flush()
 }

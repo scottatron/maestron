@@ -54,20 +54,22 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 	var result []MCPServerInfo
 
 	// 1. agents.json (highest priority)
-	_, cfg, err := agents.FindAgentsConfig()
+	agentsRoot, cfg, err := agents.FindAgentsConfig()
 	if err == nil && cfg != nil {
+		agentsConfigPath := filepath.Join(agentsRoot, ".agents", "agents.json")
 		for name, def := range cfg.MCP.Servers {
 			seen[name] = true
 			result = append(result, MCPServerInfo{
-				Name:      name,
-				Label:     def.Label,
-				Command:   def.Command,
-				Args:      def.Args,
-				Env:       def.Env,
-				Transport: def.Transport,
-				Targets:   def.Targets,
-				Enabled:   def.Enabled,
-				Source:    "agents.json",
+				Name:       name,
+				Label:      def.Label,
+				Command:    def.Command,
+				Args:       def.Args,
+				Env:        def.Env,
+				Transport:  def.Transport,
+				Targets:    def.Targets,
+				Enabled:    def.Enabled,
+				Source:     "agents.json",
+				ConfigPath: agentsConfigPath,
 			})
 		}
 	}
@@ -83,13 +85,14 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 					}
 					seen[name] = true
 					result = append(result, MCPServerInfo{
-						Name:      name,
-						Command:   srv.Command,
-						Args:      srv.Args,
-						Env:       srv.Env,
-						Transport: "stdio",
-						Enabled:   true,
-						Source:    "claude-settings",
+						Name:       name,
+						Command:    srv.Command,
+						Args:       srv.Args,
+						Env:        srv.Env,
+						Transport:  "stdio",
+						Enabled:    true,
+						Source:     "claude-settings",
+						ConfigPath: settingsFile,
 					})
 				}
 			}
@@ -112,15 +115,16 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 						transport = "http"
 					}
 					result = append(result, MCPServerInfo{
-						Name:      name,
-						Command:   srv.Command,
-						Args:      srv.Args,
-						Env:       srv.Env,
-						URL:       srv.URL,
-						Transport: transport,
-						Targets:   []string{"copilot"},
-						Enabled:   true,
-						Source:    "copilot-mcp-config",
+						Name:       name,
+						Command:    srv.Command,
+						Args:       srv.Args,
+						Env:        srv.Env,
+						URL:        srv.URL,
+						Transport:  transport,
+						Targets:    []string{"copilot"},
+						Enabled:    true,
+						Source:     "copilot-mcp-config",
+						ConfigPath: copilotPath,
 					})
 				}
 			}
@@ -139,13 +143,14 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 					}
 					seen[name] = true
 					result = append(result, MCPServerInfo{
-						Name:      name,
-						Command:   srv.Command,
-						Args:      srv.Args,
-						Transport: "stdio",
-						Targets:   []string{"codex"},
-						Enabled:   true,
-						Source:    "codex-config",
+						Name:       name,
+						Command:    srv.Command,
+						Args:       srv.Args,
+						Transport:  "stdio",
+						Targets:    []string{"codex"},
+						Enabled:    true,
+						Source:     "codex-config",
+						ConfigPath: codexPath,
 					})
 				}
 			}

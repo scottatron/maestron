@@ -65,7 +65,7 @@ func renderMCPTable(servers []discover.MCPServerInfo) {
 		fmt.Println("No MCP servers found.")
 		return
 	}
-	t := output.NewTable(os.Stdout, []string{"NAME", "COMMAND/URL", "TRANSPORT", "TARGETS", "ENABLED"})
+	t := output.NewTable(os.Stdout, []string{"NAME", "COMMAND/URL", "TRANSPORT", "TARGETS", "ENABLED", "CONFIG"})
 	for _, s := range servers {
 		cmd := s.Command
 		if len(s.Args) > 0 {
@@ -82,7 +82,7 @@ func renderMCPTable(servers []discover.MCPServerInfo) {
 		if !s.Enabled {
 			enabled = "no"
 		}
-		t.Row(s.Name, cmd, s.Transport, targets, enabled)
+		t.Row(s.Name, cmd, s.Transport, targets, enabled, s.ConfigPath)
 	}
 	t.Flush()
 }
