@@ -12,8 +12,3 @@ func listOpenCodeSessions() ([]SessionInfo, error) {
 	return nil, nil
 }
 
-// listCopilotSessions returns Copilot sessions (stub — future implementation).
-// GitHub Copilot CLI does not appear to persist session transcripts locally.
-func listCopilotSessions() ([]SessionInfo, error) {
-	return nil, nil
-}
