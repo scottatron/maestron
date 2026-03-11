@@ -132,7 +132,7 @@ func RemoveMCPServer(root, name string, global bool) error {
 	return nil
 }
 
-// SetMCPServerEnabled enables or disables an MCP server.
+// SetMCPServerEnabled enables or disables an MCP server in agents.json.
 // If the server exists in agents.json, its Enabled field is updated directly.
 // If the server is only in global.json, a minimal override entry is written to agents.json.
 func SetMCPServerEnabled(root, name string, enabled bool) error {
@@ -147,6 +147,22 @@ func SetMCPServerEnabled(root, name string, enabled bool) error {
 	def.Enabled = agents.BoolPtr(enabled)
 	cfg.MCP.Servers[name] = def
 	return WriteAgentsConfig(root, cfg)
+}
+
+// SetGlobalMCPServerEnabled enables or disables an MCP server in ~/.agents/global.json.
+// Returns an error if the server is not found in global.json.
+func SetGlobalMCPServerEnabled(name string, enabled bool) error {
+	gc, err := ReadGlobalMcpConfig()
+	if err != nil {
+		return err
+	}
+	def, ok := gc.MCPServers[name]
+	if !ok {
+		return fmt.Errorf("MCP server %q not found in global.json", name)
+	}
+	def.Enabled = agents.BoolPtr(enabled)
+	gc.MCPServers[name] = def
+	return WriteGlobalMcpConfig(gc)
 }
 
 // globalConfigPath returns the path to ~/.agents/global.json.

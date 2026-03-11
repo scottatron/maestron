@@ -244,9 +244,11 @@ func runMCPRemove(cmd *cobra.Command, args []string) error {
 
 // --- mcp enable ---
 
+var enableGlobal bool
+
 var mcpEnableCmd = &cobra.Command{
 	Use:   "enable <name>",
-	Short: "Enable an MCP server in agents.json",
+	Short: "Enable an MCP server",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runMCPSetEnabled(args[0], true)
@@ -255,20 +257,38 @@ var mcpEnableCmd = &cobra.Command{
 
 var mcpDisableCmd = &cobra.Command{
 	Use:   "disable <name>",
-	Short: "Disable an MCP server in agents.json",
+	Short: "Disable an MCP server",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runMCPSetEnabled(args[0], false)
 	},
 }
 
+func init() {
+	mcpEnableCmd.Flags().BoolVar(&enableGlobal, "global", false, "set in ~/.agents/global.json instead of agents.json")
+	mcpDisableCmd.Flags().BoolVar(&enableGlobal, "global", false, "set in ~/.agents/global.json instead of agents.json")
+}
+
 func runMCPSetEnabled(name string, enabled bool) error {
+	if enableGlobal {
+		if err := manage.SetGlobalMCPServerEnabled(name, enabled); err != nil {
+			return err
+		}
+		state := "enabled"
+		if !enabled {
+			state = "disabled"
+		}
+		fmt.Printf("MCP server %q %s in ~/.agents/global.json\n", name, state)
+		fmt.Println("Run `maestron sync` to apply changes.")
+		return nil
+	}
+
 	root, _, err := agents.FindAgentsConfig()
 	if err != nil {
 		return fmt.Errorf("finding project root: %w", err)
 	}
 	if root == "" {
-		return fmt.Errorf("no agents.json found; run from a project directory")
+		return fmt.Errorf("no agents.json found; run from a project directory or use --global")
 	}
 
 	if err := manage.SetMCPServerEnabled(root, name, enabled); err != nil {
