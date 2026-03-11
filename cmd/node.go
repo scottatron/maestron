@@ -13,7 +13,12 @@ import (
 	"github.com/scottatron/maestron/internal/output"
 )
 
-var statusCmd = &cobra.Command{
+var nodeCmd = &cobra.Command{
+	Use:   "node",
+	Short: "Node-level information",
+}
+
+var nodeStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Node-level summary",
 	RunE:  runStatus,
@@ -83,4 +88,11 @@ func renderStatus(info discover.NodeInfo, groups []discover.SessionGroup, skills
 		}
 		fmt.Printf("  • %s (%s)\n", m.Name, enabled)
 	}
+}
+
+func init() {
+	nodeCmd.AddCommand(nodeStatusCmd)
+	nodeCmd.AddCommand(agentsCmd)
+	nodeCmd.AddCommand(sessionsCmd)
+	nodeCmd.AddCommand(skillsCmd)
 }

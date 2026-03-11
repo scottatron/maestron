@@ -38,14 +38,8 @@ func init() {
 
 	rootCmd.PersistentFlags().BoolP("json", "j", false, "output as JSON")
 
-	rootCmd.AddCommand(initCmd)
-	rootCmd.AddCommand(agentsCmd)
-	rootCmd.AddCommand(sessionsCmd)
-	rootCmd.AddCommand(skillsCmd)
-	rootCmd.AddCommand(mcpCmd)
-	rootCmd.AddCommand(statusCmd)
-	rootCmd.AddCommand(syncCmd)
-	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(workspaceCmd)
+	rootCmd.AddCommand(nodeCmd)
 
 	RegisterLaunchCommands(rootCmd)
 }
