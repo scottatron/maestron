@@ -76,9 +76,10 @@ func copilotExtraArgs() []string {
 		return nil
 	}
 	mcpConfigPath := filepath.Join(root, ".copilot", "mcp-config.json")
-	if _, err := os.Stat(mcpConfigPath); err != nil {
+	data, err := os.ReadFile(mcpConfigPath)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "warning: .copilot/mcp-config.json not found; run `maestron sync` to generate it\n")
 		return nil
 	}
-	return []string{"--additional-mcp-config", mcpConfigPath}
+	return []string{"--additional-mcp-config", string(data)}
 }
