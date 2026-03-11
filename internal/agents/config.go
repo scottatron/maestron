@@ -42,13 +42,13 @@ type GlobalMcpConfig struct {
 	MCPServers map[string]MCPServerDef `json:"mcpServers"`
 }
 
-// FindAgentsConfig searches for the squad root and parses agents.json.
+// FindAgentsConfig searches for the project root and parses agents.json.
 // Returns ("", nil, nil) if not found — callers handle gracefully.
 func FindAgentsConfig() (root string, cfg *AgentsConfig, err error) {
-	// 1. $SQUAD_ROOT env var
-	if squadRoot := os.Getenv("SQUAD_ROOT"); squadRoot != "" {
-		if cfg, err := tryLoadAgentsConfig(squadRoot); cfg != nil || err != nil {
-			return squadRoot, cfg, err
+	// 1. $AGENTS_ROOT env var
+	if agentsRoot := os.Getenv("AGENTS_ROOT"); agentsRoot != "" {
+		if cfg, err := tryLoadAgentsConfig(agentsRoot); cfg != nil || err != nil {
+			return agentsRoot, cfg, err
 		}
 	}
 
@@ -66,16 +66,6 @@ func FindAgentsConfig() (root string, cfg *AgentsConfig, err error) {
 			}
 			dir = parent
 		}
-	}
-
-	// 3. Fallback to ~/src/github.com/scottatron/squad
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", nil, err
-	}
-	fallback := filepath.Join(home, "src", "github.com", "scottatron", "squad")
-	if cfg, err := tryLoadAgentsConfig(fallback); cfg != nil || err != nil {
-		return fallback, cfg, err
 	}
 
 	return "", nil, nil

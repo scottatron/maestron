@@ -22,7 +22,7 @@ var skillsCmd = &cobra.Command{
 }
 
 func init() {
-	skillsCmd.Flags().StringVar(&skillsSource, "source", "all", `filter by source: "squad", "claude", or "all"`)
+	skillsCmd.Flags().StringVar(&skillsSource, "source", "all", `filter by source: "project", "claude", or "all"`)
 }
 
 func runSkills(cmd *cobra.Command, args []string) error {
@@ -36,8 +36,8 @@ func runSkills(cmd *cobra.Command, args []string) error {
 		var filtered []discover.SkillInfo
 		for _, s := range skills {
 			switch skillsSource {
-			case "squad":
-				if s.Source == "squad" {
+			case "project":
+				if s.Source == "project" {
 					filtered = append(filtered, s)
 				}
 			case "claude":

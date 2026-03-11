@@ -17,16 +17,16 @@ type skillFrontmatter struct {
 	Description string `yaml:"description"`
 }
 
-// ListSkills discovers all skills from squad and Claude native sources.
+// ListSkills discovers all skills from project and Claude native sources.
 // Skills with the same name+source are deduplicated (first occurrence wins).
 func ListSkills() ([]SkillInfo, error) {
 	var skills []SkillInfo
 
-	// Squad skills
+	// Project-local skills
 	root, _, _ := agents.FindAgentsConfig()
 	if root != "" {
-		if squadSkills, err := discoverSquadSkills(root); err == nil {
-			skills = append(skills, squadSkills...)
+		if projectSkills, err := discoverProjectSkills(root); err == nil {
+			skills = append(skills, projectSkills...)
 		}
 	}
 
@@ -62,8 +62,8 @@ func discoverGlobalAgentSkills() ([]SkillInfo, error) {
 	return discoverSkillsDir(filepath.Join(home, ".agents", "skills"), "global")
 }
 
-func discoverSquadSkills(squadRoot string) ([]SkillInfo, error) {
-	return discoverSkillsDir(filepath.Join(squadRoot, ".agents", "skills"), "squad")
+func discoverProjectSkills(projectRoot string) ([]SkillInfo, error) {
+	return discoverSkillsDir(filepath.Join(projectRoot, ".agents", "skills"), "project")
 }
 
 func discoverSkillsDir(skillsDir, source string) ([]SkillInfo, error) {
