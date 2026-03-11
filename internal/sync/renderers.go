@@ -31,7 +31,7 @@ var integrationRenderers = map[string]func(root string, servers map[string]agent
 	"opencode":       RenderOpenCode,
 }
 
-// RenderClaude generates .claude/mcp.json
+// RenderClaude generates .claude/settings.json
 func RenderClaude(root string, servers map[string]agents.MCPServerDef) (RenderOutput, error) {
 	type claudeServer struct {
 		Type    string            `json:"type,omitempty"`
@@ -66,7 +66,7 @@ func RenderClaude(root string, servers map[string]agents.MCPServerDef) (RenderOu
 	if err != nil {
 		return RenderOutput{}, err
 	}
-	return RenderOutput{Path: filepath.Join(root, ".claude", "mcp.json"), Data: data}, nil
+	return RenderOutput{Path: filepath.Join(root, ".claude", "settings.json"), Data: data}, nil
 }
 
 // RenderCodex generates .codex/config.toml
