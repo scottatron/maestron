@@ -64,9 +64,13 @@ func TestListMCPServers(t *testing.T) {
 		t.Logf("ListMCPServers error: %v", err)
 		return
 	}
-	t.Logf("found %d MCP servers", len(servers))
+	t.Logf("found %d MCP servers (including duplicates across sources)", len(servers))
 	for _, s := range servers {
-		t.Logf("  %s (enabled=%v, source=%s)", s.Name, s.Enabled, s.Source)
+		shadowed := ""
+		if s.Shadowed {
+			shadowed = " [shadowed]"
+		}
+		t.Logf("  %s (source=%s, enabled=%v%s)", s.Name, s.Source, agents.IsEnabled(s.Enabled), shadowed)
 	}
 }
 

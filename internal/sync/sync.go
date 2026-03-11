@@ -100,21 +100,73 @@ func Sync(projectRoot string, dryRun bool, integration string) ([]SyncResult, er
 	return results, nil
 }
 
-// mergeServers merges global → project → local (project overrides global; local overlays on top).
+// mergeServers merges global → project → local (field-level merge, not full replace).
+// For each server present in project's agents.json that also exists in global:
+// project values override global values only for non-zero/non-nil fields.
+// Local overlays env/headers/args on top.
 func mergeServers(gc *agents.GlobalMcpConfig, cfg *agents.AgentsConfig, lo *manage.LocalOverrides) map[string]agents.MCPServerDef {
 	result := make(map[string]agents.MCPServerDef)
 
-	// Global servers (lowest priority)
+	// Global servers (base definitions)
 	if gc != nil {
 		for k, v := range gc.MCPServers {
 			result[k] = v
 		}
 	}
 
-	// Project servers override global
+	// Project servers: field-level merge over global
 	if cfg != nil {
-		for k, v := range cfg.MCP.Servers {
-			result[k] = v
+		for k, proj := range cfg.MCP.Servers {
+			base, hasGlobal := result[k]
+			if !hasGlobal {
+				// Not in global — use project definition as-is
+				result[k] = proj
+				continue
+			}
+			// Field-level merge: project overrides non-zero fields
+			merged := base
+			if proj.Label != "" {
+				merged.Label = proj.Label
+			}
+			if proj.Description != "" {
+				merged.Description = proj.Description
+			}
+			if proj.Transport != "" {
+				merged.Transport = proj.Transport
+			}
+			if proj.Command != "" {
+				merged.Command = proj.Command
+			}
+			if len(proj.Args) > 0 {
+				merged.Args = proj.Args
+			}
+			if proj.URL != "" {
+				merged.URL = proj.URL
+			}
+			if len(proj.Env) > 0 {
+				if merged.Env == nil {
+					merged.Env = make(map[string]string)
+				}
+				for k2, v2 := range proj.Env {
+					merged.Env[k2] = v2
+				}
+			}
+			if len(proj.Headers) > 0 {
+				if merged.Headers == nil {
+					merged.Headers = make(map[string]string)
+				}
+				for k2, v2 := range proj.Headers {
+					merged.Headers[k2] = v2
+				}
+			}
+			if len(proj.Targets) > 0 {
+				merged.Targets = proj.Targets
+			}
+			// *bool: nil means "don't override", non-nil overrides
+			if proj.Enabled != nil {
+				merged.Enabled = proj.Enabled
+			}
+			result[k] = merged
 		}
 	}
 
@@ -155,11 +207,10 @@ func mergeServers(gc *agents.GlobalMcpConfig, cfg *agents.AgentsConfig, lo *mana
 func filterServersForIntegration(servers map[string]agents.MCPServerDef, integration string) map[string]agents.MCPServerDef {
 	result := make(map[string]agents.MCPServerDef)
 	for name, def := range servers {
-		if !def.Enabled {
+		if !agents.IsEnabled(def.Enabled) {
 			continue
 		}
 		if len(def.Targets) == 0 {
-			// Empty targets = all integrations
 			result[name] = def
 			continue
 		}

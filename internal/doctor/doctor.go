@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/scottatron/maestron/internal/agents"
 	"github.com/scottatron/maestron/internal/manage"
 )
 
@@ -202,7 +203,7 @@ func Check(projectRoot string) ([]Issue, error) {
 	for _, integ := range cfg.Integrations.Enabled {
 		hasServer := false
 		for _, def := range cfg.MCP.Servers {
-			if !def.Enabled {
+			if !agents.IsEnabled(def.Enabled) {
 				continue
 			}
 			if len(def.Targets) == 0 {

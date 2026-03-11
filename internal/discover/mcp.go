@@ -47,10 +47,29 @@ type codexMCPServer struct {
 	Args    []string `toml:"args"`
 }
 
+// sourceOrder defines the priority of sources (index = priority, lower = higher priority).
+var sourceOrder = []string{
+	"agents.json",
+	"claude-settings",
+	"copilot-mcp-config",
+	"codex-config",
+	"agents-global",
+}
+
+// SourcePriority returns the priority index for a source (lower = higher priority).
+func SourcePriority(source string) int {
+	for i, s := range sourceOrder {
+		if s == source {
+			return i
+		}
+	}
+	return len(sourceOrder)
+}
+
 // ListMCPServers returns all configured MCP servers from all known sources.
-// Priority: agents.json > ~/.claude/settings.json > ~/.copilot/mcp-config.json > ~/.codex/config.toml
+// All entries are returned — no deduplication. When the same server name appears
+// in multiple sources, the lower-priority entries have Shadowed set to true.
 func ListMCPServers() ([]MCPServerInfo, error) {
-	seen := map[string]bool{}
 	var result []MCPServerInfo
 
 	// 1. agents.json (highest priority)
@@ -58,7 +77,6 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 	if err == nil && cfg != nil {
 		agentsConfigPath := filepath.Join(agentsRoot, ".agents", "agents.json")
 		for name, def := range cfg.MCP.Servers {
-			seen[name] = true
 			result = append(result, MCPServerInfo{
 				Name:       name,
 				Label:      def.Label,
@@ -80,17 +98,13 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 			var cs claudeSettings
 			if json.Unmarshal(data, &cs) == nil {
 				for name, srv := range cs.MCPServers {
-					if seen[name] {
-						continue
-					}
-					seen[name] = true
 					result = append(result, MCPServerInfo{
 						Name:       name,
 						Command:    srv.Command,
 						Args:       srv.Args,
 						Env:        srv.Env,
 						Transport:  "stdio",
-						Enabled:    true,
+						Enabled:    agents.BoolPtr(true),
 						Source:     "claude-settings",
 						ConfigPath: settingsFile,
 					})
@@ -106,10 +120,6 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 			var cc copilotMCPConfig
 			if json.Unmarshal(data, &cc) == nil {
 				for name, srv := range cc.MCPServers {
-					if seen[name] {
-						continue
-					}
-					seen[name] = true
 					transport := "stdio"
 					if srv.Type == "http" {
 						transport = "http"
@@ -122,7 +132,7 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 						URL:        srv.URL,
 						Transport:  transport,
 						Targets:    []string{"copilot"},
-						Enabled:    true,
+						Enabled:    agents.BoolPtr(true),
 						Source:     "copilot-mcp-config",
 						ConfigPath: copilotPath,
 					})
@@ -138,18 +148,14 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 			var dc codexConfig
 			if toml.Unmarshal(data, &dc) == nil {
 				for name, srv := range dc.MCPServers {
-					if seen[name] {
-						continue
-					}
-					seen[name] = true
 					result = append(result, MCPServerInfo{
-						Name:       name,
-						Command:    srv.Command,
-						Args:       srv.Args,
-						Transport:  "stdio",
-						Targets:    []string{"codex"},
-						Enabled:    true,
-						Source:     "codex-config",
+						Name:      name,
+						Command:   srv.Command,
+						Args:      srv.Args,
+						Transport: "stdio",
+						Targets:   []string{"codex"},
+						Enabled:   agents.BoolPtr(true),
+						Source:    "codex-config",
 						ConfigPath: codexPath,
 					})
 				}
@@ -164,10 +170,6 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 			var gc agents.GlobalMcpConfig
 			if json.Unmarshal(data, &gc) == nil {
 				for name, def := range gc.MCPServers {
-					if seen[name] {
-						continue
-					}
-					seen[name] = true
 					result = append(result, MCPServerInfo{
 						Name:       name,
 						Command:    def.Command,
@@ -185,5 +187,28 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 		}
 	}
 
+	// Mark shadowed entries: for each server name, entries from lower-priority
+	// sources are shadowed by entries from higher-priority sources.
+	markShadowed(result)
+
 	return result, nil
+}
+
+// markShadowed sets Shadowed=true on entries that are overridden by a
+// higher-priority source with the same server name.
+func markShadowed(servers []MCPServerInfo) {
+	// Find the highest priority source for each name.
+	best := make(map[string]int) // name → best priority seen so far
+	for i := range servers {
+		p := SourcePriority(servers[i].Source)
+		if existing, ok := best[servers[i].Name]; !ok || p < existing {
+			best[servers[i].Name] = p
+		}
+	}
+	// Mark entries that are not from the best source as shadowed.
+	for i := range servers {
+		if SourcePriority(servers[i].Source) > best[servers[i].Name] {
+			servers[i].Shadowed = true
+		}
+	}
 }

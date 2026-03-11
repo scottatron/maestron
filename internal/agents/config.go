@@ -35,7 +35,7 @@ type MCPServerDef struct {
 	Headers     map[string]string `json:"headers,omitempty"`
 	URL         string            `json:"url,omitempty"`
 	Targets     []string          `json:"targets,omitempty"`
-	Enabled     bool              `json:"enabled"`
+	Enabled     *bool             `json:"enabled,omitempty"`
 }
 
 // GlobalMcpConfig represents the ~/.agents/global.json structure.
@@ -81,6 +81,12 @@ func FindAgentsConfig() (root string, cfg *AgentsConfig, err error) {
 
 	return "", nil, nil
 }
+
+// BoolPtr returns a pointer to b.
+func BoolPtr(b bool) *bool { return &b }
+
+// IsEnabled returns true if b is nil (unset, defaults to enabled) or points to true.
+func IsEnabled(b *bool) bool { return b == nil || *b }
 
 func tryLoadAgentsConfig(root string) (*AgentsConfig, error) {
 	path := filepath.Join(root, ".agents", "agents.json")

@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/scottatron/maestron/internal/agents"
 	"github.com/scottatron/maestron/internal/discover"
 	"github.com/scottatron/maestron/internal/output"
 )
@@ -77,7 +78,7 @@ func renderStatus(info discover.NodeInfo, groups []discover.SessionGroup, skills
 	fmt.Printf("MCP:      %d servers\n", info.MCPCount)
 	for _, m := range mcpServers {
 		enabled := "enabled"
-		if !m.Enabled {
+		if !agents.IsEnabled(m.Enabled) {
 			enabled = "disabled"
 		}
 		fmt.Printf("  • %s (%s)\n", m.Name, enabled)

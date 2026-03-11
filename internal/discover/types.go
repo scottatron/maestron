@@ -72,15 +72,16 @@ type SkillInfo struct {
 
 // MCPServerInfo describes a configured MCP server.
 type MCPServerInfo struct {
-	Name      string            `json:"name"`
-	Label     string            `json:"label"`
-	Command   string            `json:"command"`
-	Args      []string          `json:"args"`
-	Env       map[string]string `json:"env,omitempty"`
-	URL       string            `json:"url,omitempty"`
+	Name       string            `json:"name"`
+	Label      string            `json:"label"`
+	Command    string            `json:"command"`
+	Args       []string          `json:"args"`
+	Env        map[string]string `json:"env,omitempty"`
+	URL        string            `json:"url,omitempty"`
 	Transport  string            `json:"transport"`
 	Targets    []string          `json:"targets"`
-	Enabled    bool              `json:"enabled"`
+	Enabled    *bool             `json:"enabled"`
 	Source     string            `json:"source"`
 	ConfigPath string            `json:"config_path,omitempty"`
+	Shadowed   bool              `json:"shadowed,omitempty"`
 }
