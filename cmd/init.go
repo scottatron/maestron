@@ -145,17 +145,6 @@ Non-selected MCP servers are explicitly disabled.`,
 			fmt.Printf("  %d/%d MCP servers enabled\n", len(selectedMCP), len(globalCfg.MCPServers))
 		}
 
-		// Create AGENTS.md if it doesn't exist
-		agentsMd := filepath.Join(cwd, "AGENTS.md")
-		if _, err := os.Stat(agentsMd); os.IsNotExist(err) {
-			template := "# Agent Instructions\n\nDescribe project-specific instructions for AI agents here.\n"
-			if err := os.WriteFile(agentsMd, []byte(template), 0644); err != nil {
-				fmt.Printf("Warning: could not create AGENTS.md: %v\n", err)
-			} else {
-				fmt.Printf("Created %s\n", tildeAbbrev(agentsMd))
-			}
-		}
-
 		return nil
 	},
 }
