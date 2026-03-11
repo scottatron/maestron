@@ -10,6 +10,7 @@ import (
 	"github.com/scottatron/maestron/internal/agents"
 	"github.com/scottatron/maestron/internal/discover"
 	"github.com/scottatron/maestron/internal/manage"
+	maestronsync "github.com/scottatron/maestron/internal/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -143,6 +144,14 @@ Non-selected MCP servers are explicitly disabled.`,
 		}
 		if len(globalCfg.MCPServers) > 0 {
 			fmt.Printf("  %d/%d MCP servers enabled\n", len(selectedMCP), len(globalCfg.MCPServers))
+		}
+
+		fmt.Println()
+		results, err := maestronsync.Sync(cwd, false, "")
+		if err != nil {
+			fmt.Printf("Warning: sync failed: %v\n", err)
+		} else {
+			renderSyncTable(results)
 		}
 
 		return nil
