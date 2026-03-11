@@ -157,5 +157,33 @@ func ListMCPServers() ([]MCPServerInfo, error) {
 		}
 	}
 
+	// 5. ~/.agents/global.json (lowest priority)
+	if home, err := platform.HomeDir(); err == nil {
+		globalPath := filepath.Join(home, ".agents", "global.json")
+		if data, err := os.ReadFile(globalPath); err == nil {
+			var gc agents.GlobalMcpConfig
+			if json.Unmarshal(data, &gc) == nil {
+				for name, def := range gc.MCPServers {
+					if seen[name] {
+						continue
+					}
+					seen[name] = true
+					result = append(result, MCPServerInfo{
+						Name:       name,
+						Command:    def.Command,
+						Args:       def.Args,
+						Env:        def.Env,
+						URL:        def.URL,
+						Transport:  def.Transport,
+						Targets:    def.Targets,
+						Enabled:    def.Enabled,
+						Source:     "agents-global",
+						ConfigPath: globalPath,
+					})
+				}
+			}
+		}
+	}
+
 	return result, nil
 }

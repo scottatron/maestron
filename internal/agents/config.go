@@ -9,25 +9,38 @@ import (
 // AgentsConfig represents the schema v3 .agents/agents.json structure.
 type AgentsConfig struct {
 	SchemaVersion int `json:"schemaVersion"`
-	MCP           struct {
+	Instructions  struct {
+		Path string `json:"path,omitempty"`
+	} `json:"instructions,omitempty"`
+	MCP struct {
 		Servers map[string]MCPServerDef `json:"servers"`
 	} `json:"mcp"`
 	Integrations struct {
-		Enabled []string `json:"enabled"`
+		Enabled []string               `json:"enabled"`
+		Options map[string]interface{} `json:"options,omitempty"`
 	} `json:"integrations"`
-	SyncMode string `json:"syncMode"`
+	SyncMode  string          `json:"syncMode,omitempty"`
+	Workspace json.RawMessage `json:"workspace,omitempty"`
+	LastSync  string          `json:"lastSync,omitempty"`
 }
 
 // MCPServerDef is an MCP server definition from agents.json.
 type MCPServerDef struct {
-	Label       string            `json:"label"`
-	Description string            `json:"description"`
-	Transport   string            `json:"transport"`
-	Command     string            `json:"command"`
-	Args        []string          `json:"args"`
+	Label       string            `json:"label,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Transport   string            `json:"transport,omitempty"`
+	Command     string            `json:"command,omitempty"`
+	Args        []string          `json:"args,omitempty"`
 	Env         map[string]string `json:"env,omitempty"`
-	Targets     []string          `json:"targets"`
+	Headers     map[string]string `json:"headers,omitempty"`
+	URL         string            `json:"url,omitempty"`
+	Targets     []string          `json:"targets,omitempty"`
 	Enabled     bool              `json:"enabled"`
+}
+
+// GlobalMcpConfig represents the ~/.agents/global.json structure.
+type GlobalMcpConfig struct {
+	MCPServers map[string]MCPServerDef `json:"mcpServers"`
 }
 
 // FindAgentsConfig searches for the squad root and parses agents.json.

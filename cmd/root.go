@@ -43,4 +43,8 @@ func init() {
 	rootCmd.AddCommand(skillsCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(statusCmd)
+	rootCmd.AddCommand(syncCmd)
+	rootCmd.AddCommand(doctorCmd)
+
+	RegisterLaunchCommands(rootCmd)
 }
