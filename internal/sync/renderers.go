@@ -31,7 +31,7 @@ var integrationRenderers = map[string]func(root string, servers map[string]agent
 	"opencode":       RenderOpenCode,
 }
 
-// RenderClaude merges mcpServers into .claude/settings.json, preserving other keys.
+// RenderClaude merges mcpServers into .mcp.json at the project root.
 func RenderClaude(root string, servers map[string]agents.MCPServerDef) (RenderOutput, error) {
 	type claudeServer struct {
 		Type    string            `json:"type,omitempty"`
@@ -42,7 +42,7 @@ func RenderClaude(root string, servers map[string]agents.MCPServerDef) (RenderOu
 		Headers map[string]string `json:"headers,omitempty"`
 	}
 
-	outPath := filepath.Join(root, ".claude", "settings.json")
+	outPath := filepath.Join(root, ".mcp.json")
 
 	// Read existing file to preserve non-mcpServers keys
 	existing := map[string]json.RawMessage{}
