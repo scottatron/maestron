@@ -13,8 +13,9 @@ import (
 
 // RenderOutput holds the target path and content for a rendered config.
 type RenderOutput struct {
-	Path string
-	Data []byte
+	Path  string
+	Data  []byte
+	Extra []RenderOutput // additional companion files to write
 }
 
 // integrationRenderers maps integration names to their renderer functions.
@@ -78,7 +79,26 @@ func RenderClaude(root string, servers map[string]agents.MCPServerDef) (RenderOu
 	if err != nil {
 		return RenderOutput{}, err
 	}
-	return RenderOutput{Path: outPath, Data: data}, nil
+
+	// Generate .claude/settings.local.json to enable project MCP servers
+	localSettingsPath := filepath.Join(root, ".claude", "settings.local.json")
+	localExisting := map[string]json.RawMessage{}
+	if ldata, err := os.ReadFile(localSettingsPath); err == nil {
+		_ = json.Unmarshal(ldata, &localExisting)
+	}
+	localExisting["enableAllProjectMcpServers"], _ = json.Marshal(true)
+	localData, err := marshalJSON(localExisting)
+	if err != nil {
+		return RenderOutput{}, err
+	}
+
+	return RenderOutput{
+		Path: outPath,
+		Data: data,
+		Extra: []RenderOutput{
+			{Path: localSettingsPath, Data: localData},
+		},
+	}, nil
 }
 
 // RenderCodex generates .codex/config.toml

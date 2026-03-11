@@ -78,6 +78,13 @@ func Sync(projectRoot string, dryRun bool, integration string) ([]SyncResult, er
 				Path:        out.Path,
 				Written:     false,
 			})
+			for _, extra := range out.Extra {
+				results = append(results, SyncResult{
+					Integration: integ,
+					Path:        extra.Path,
+					Written:     false,
+				})
+			}
 			continue
 		}
 
@@ -95,6 +102,22 @@ func Sync(projectRoot string, dryRun bool, integration string) ([]SyncResult, er
 			Path:        out.Path,
 			Written:     true,
 		})
+
+		for _, extra := range out.Extra {
+			if err := writeFile(extra.Path, extra.Data); err != nil {
+				results = append(results, SyncResult{
+					Integration: integ,
+					Path:        extra.Path,
+					Err:         err,
+				})
+			} else {
+				results = append(results, SyncResult{
+					Integration: integ,
+					Path:        extra.Path,
+					Written:     true,
+				})
+			}
+		}
 	}
 
 	return results, nil
