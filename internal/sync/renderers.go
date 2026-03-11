@@ -31,7 +31,7 @@ var integrationRenderers = map[string]func(root string, servers map[string]agent
 	"opencode":       RenderOpenCode,
 }
 
-// RenderClaude generates .claude/settings.json
+// RenderClaude merges mcpServers into .claude/settings.json, preserving other keys.
 func RenderClaude(root string, servers map[string]agents.MCPServerDef) (RenderOutput, error) {
 	type claudeServer struct {
 		Type    string            `json:"type,omitempty"`
@@ -41,11 +41,17 @@ func RenderClaude(root string, servers map[string]agents.MCPServerDef) (RenderOu
 		URL     string            `json:"url,omitempty"`
 		Headers map[string]string `json:"headers,omitempty"`
 	}
-	type claudeConfig struct {
-		MCPServers map[string]claudeServer `json:"mcpServers"`
+
+	outPath := filepath.Join(root, ".claude", "settings.json")
+
+	// Read existing file to preserve non-mcpServers keys
+	existing := map[string]json.RawMessage{}
+	if data, err := os.ReadFile(outPath); err == nil {
+		_ = json.Unmarshal(data, &existing)
 	}
 
-	cfg := claudeConfig{MCPServers: map[string]claudeServer{}}
+	// Build mcpServers map
+	mcpServers := map[string]claudeServer{}
 	for name, def := range servers {
 		srv := claudeServer{
 			Command: def.Command,
@@ -59,14 +65,20 @@ func RenderClaude(root string, servers map[string]agents.MCPServerDef) (RenderOu
 		} else if def.Command != "" {
 			srv.Type = "stdio"
 		}
-		cfg.MCPServers[name] = srv
+		mcpServers[name] = srv
 	}
 
-	data, err := marshalJSON(cfg)
+	mcpData, err := json.Marshal(mcpServers)
 	if err != nil {
 		return RenderOutput{}, err
 	}
-	return RenderOutput{Path: filepath.Join(root, ".claude", "settings.json"), Data: data}, nil
+	existing["mcpServers"] = mcpData
+
+	data, err := marshalJSON(existing)
+	if err != nil {
+		return RenderOutput{}, err
+	}
+	return RenderOutput{Path: outPath, Data: data}, nil
 }
 
 // RenderCodex generates .codex/config.toml
