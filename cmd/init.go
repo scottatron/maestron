@@ -90,6 +90,8 @@ this project. Non-selected servers are explicitly disabled.`,
 
 		// Create agents.json with explicit enable/disable overrides
 		cfg := &agents.AgentsConfig{}
+		cfg.SchemaVersion = 3
+		cfg.Instructions.Path = "AGENTS.md"
 		cfg.MCP.Servers = make(map[string]agents.MCPServerDef)
 		for name := range globalCfg.MCPServers {
 			cfg.MCP.Servers[name] = agents.MCPServerDef{
@@ -104,11 +106,22 @@ this project. Non-selected servers are explicitly disabled.`,
 		if err := manage.WriteAgentsConfig(cwd, cfg); err != nil {
 			return fmt.Errorf("could not write agents.json: %w", err)
 		}
-
 		fmt.Printf("Created %s\n", tildeAbbrev(agentsFile))
 		if len(globalCfg.MCPServers) > 0 {
 			fmt.Printf("  %d/%d MCP servers enabled\n", len(selected), len(globalCfg.MCPServers))
 		}
+
+		// Create AGENTS.md if it doesn't exist
+		agentsMd := filepath.Join(cwd, "AGENTS.md")
+		if _, err := os.Stat(agentsMd); os.IsNotExist(err) {
+			template := "# Agent Instructions\n\nDescribe project-specific instructions for AI agents here.\n"
+			if err := os.WriteFile(agentsMd, []byte(template), 0644); err != nil {
+				fmt.Printf("Warning: could not create AGENTS.md: %v\n", err)
+			} else {
+				fmt.Printf("Created %s\n", tildeAbbrev(agentsMd))
+			}
+		}
+
 		return nil
 	},
 }
