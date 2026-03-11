@@ -86,7 +86,7 @@ func renderMCPTable(servers []discover.MCPServerInfo) {
 		if !agents.IsEnabled(s.Enabled) {
 			enabled = "no"
 		}
-		source := s.Source
+		source := tildeAbbrev(s.ConfigPath)
 		if s.Shadowed {
 			source = source + " (shadowed)"
 		}
@@ -407,13 +407,13 @@ func runMCPConsolidate(cmd *cobra.Command, args []string) error {
 	for _, r := range results {
 		switch r.Action {
 		case "moved-to-global":
-			fmt.Printf("  moved     %-30s  agents.json → global.json\n", r.Name)
+			fmt.Printf("  moved     %-30s  agents.json → ~/.agents/global.json\n", r.Name)
 		case "merged":
-			fmt.Printf("  merged    %-30s  agents.json → global.json (merged with existing)\n", r.Name)
+			fmt.Printf("  merged    %-30s  agents.json → ~/.agents/global.json (merged with existing)\n", r.Name)
 		case "imported":
-			fmt.Printf("  imported  %-30s  %s → global.json\n", r.Name, r.Source)
+			fmt.Printf("  imported  %-30s  %s → ~/.agents/global.json\n", r.Name, r.Source)
 		case "removed-from-source":
-			fmt.Printf("  removed   %-30s  from %s (already in global.json)\n", r.Name, r.Source)
+			fmt.Printf("  removed   %-30s  from %s (already in ~/.agents/global.json)\n", r.Name, r.Source)
 		}
 	}
 
@@ -423,4 +423,16 @@ func runMCPConsolidate(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println("Run `maestron sync` to apply changes.")
 	return nil
+}
+
+// tildeAbbrev replaces the home directory prefix in a path with ~.
+func tildeAbbrev(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if strings.HasPrefix(path, home) {
+		return "~" + path[len(home):]
+	}
+	return path
 }
