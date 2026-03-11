@@ -220,35 +220,110 @@ func removeGlobalMCPServer(name string) error {
 
 // ConsolidateResult describes the outcome of consolidating a single server.
 type ConsolidateResult struct {
-	Name        string
-	FromSource  string   // "agents.json" or "agents-global"
-	Action      string   // "moved-to-global", "already-global", "merged"
-	WarnSources []string // external sources that still reference this server
+	Name   string
+	Source string // where it came from
+	Action string // "moved-to-global", "merged", "imported", "removed-from-source"
 }
 
-// ConsolidateMCPServers moves server definitions from agents.json into global.json,
-// leaving only enable/disable overrides in agents.json.
-// If dryRun is true, no files are written. Returns the list of actions taken.
+// ConsolidateMCPServers moves server definitions from agents.json and external sources
+// into global.json, leaving only enable/disable overrides in agents.json.
+// If dryRun is true, no files are written.
 func ConsolidateMCPServers(root string, dryRun bool) ([]ConsolidateResult, error) {
-	cfg, err := ReadAgentsConfig(root)
+	var results []ConsolidateResult
+
+	// --- Part 1: agents.json → global.json ---
+	if root != "" {
+		cfg, err := ReadAgentsConfig(root)
+		if err != nil {
+			return nil, err
+		}
+
+		gc, err := ReadGlobalMcpConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		agentsResults, updatedCfg, updatedGc := consolidateAgentsConfig(cfg, gc)
+		results = append(results, agentsResults...)
+
+		if !dryRun && len(agentsResults) > 0 {
+			if err := WriteGlobalMcpConfig(updatedGc); err != nil {
+				return nil, err
+			}
+			if err := WriteAgentsConfig(root, updatedCfg); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// --- Part 2: external sources → global.json ---
+	externalSources, err := ListExternalSources()
 	if err != nil {
 		return nil, err
 	}
 
-	gc, err := ReadGlobalMcpConfig()
-	if err != nil {
-		return nil, err
+	for _, src := range externalSources {
+		servers, err := ReadExternalServers(src)
+		if err != nil {
+			continue
+		}
+		if len(servers) == 0 {
+			continue
+		}
+
+		// Re-read global (may have been updated by Part 1)
+		gc, err := ReadGlobalMcpConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		var toRemove []string
+		for name, def := range servers {
+			toRemove = append(toRemove, name)
+			if _, exists := gc.MCPServers[name]; exists {
+				// Already in global — just remove from external source
+				results = append(results, ConsolidateResult{
+					Name:   name,
+					Source: src.Label,
+					Action: "removed-from-source",
+				})
+				continue
+			}
+			// Import into global
+			defForGlobal := def
+			defForGlobal.Enabled = nil // enabled state managed separately
+			gc.MCPServers[name] = defForGlobal
+			results = append(results, ConsolidateResult{
+				Name:   name,
+				Source: src.Label,
+				Action: "imported",
+			})
+		}
+
+		if !dryRun && len(toRemove) > 0 {
+			if err := WriteGlobalMcpConfig(gc); err != nil {
+				return nil, err
+			}
+			if err := RemoveExternalServers(src, toRemove); err != nil {
+				return nil, err
+			}
+		}
 	}
 
+	return results, nil
+}
+
+// consolidateAgentsConfig processes the agents.json → global.json migration.
+// Returns the results, updated AgentsConfig (override-only), and updated GlobalMcpConfig.
+func consolidateAgentsConfig(cfg *agents.AgentsConfig, gc *agents.GlobalMcpConfig) ([]ConsolidateResult, *agents.AgentsConfig, *agents.GlobalMcpConfig) {
 	var results []ConsolidateResult
 
 	for name, def := range cfg.MCP.Servers {
 		res := ConsolidateResult{
-			Name:       name,
-			FromSource: "agents.json",
+			Name:   name,
+			Source: "agents.json",
 		}
 
-		// Check if already in global
 		if existing, ok := gc.MCPServers[name]; ok {
 			// Merge: project definition wins for non-zero fields
 			merged := existing
@@ -292,9 +367,7 @@ func ConsolidateMCPServers(root string, dryRun bool) ([]ConsolidateResult, error
 			gc.MCPServers[name] = merged
 			res.Action = "merged"
 		} else {
-			// Move full definition to global
 			defForGlobal := def
-			// Clear the enabled field — will be stored as project override
 			defForGlobal.Enabled = nil
 			gc.MCPServers[name] = defForGlobal
 			res.Action = "moved-to-global"
@@ -303,22 +376,12 @@ func ConsolidateMCPServers(root string, dryRun bool) ([]ConsolidateResult, error
 		results = append(results, res)
 	}
 
-	if !dryRun && len(results) > 0 {
-		// Write global with new/merged definitions
-		if err := WriteGlobalMcpConfig(gc); err != nil {
-			return nil, err
-		}
-
-		// Rewrite agents.json: replace each consolidated entry with override-only
-		for name, def := range cfg.MCP.Servers {
-			cfg.MCP.Servers[name] = agents.MCPServerDef{
-				Enabled: def.Enabled,
-			}
-		}
-		if err := WriteAgentsConfig(root, cfg); err != nil {
-			return nil, err
+	// Replace agents.json entries with override-only (just Enabled)
+	for name, def := range cfg.MCP.Servers {
+		cfg.MCP.Servers[name] = agents.MCPServerDef{
+			Enabled: def.Enabled,
 		}
 	}
 
-	return results, nil
+	return results, cfg, gc
 }

@@ -293,12 +293,17 @@ var (
 
 var mcpConsolidateCmd = &cobra.Command{
 	Use:   "consolidate",
-	Short: "Move MCP server definitions from agents.json into global.json",
-	Long: `Consolidate moves all MCP server definitions from the project's agents.json
-into ~/.agents/global.json, leaving only enable/disable overrides in agents.json.
+	Short: "Move MCP server definitions from all sources into global.json",
+	Long: `Consolidate imports MCP server definitions from all known sources into
+~/.agents/global.json:
 
-This supports a workflow where server definitions are managed globally and
-projects only opt in/out of individual servers.`,
+  - agents.json: definitions moved to global.json; only enable/disable
+    overrides are kept in agents.json
+  - ~/.claude/settings.json, ~/.copilot/mcp-config.json, ~/.codex/config.toml:
+    definitions imported to global.json and removed from the source file
+
+After consolidation, run 'maestron sync' in each project to regenerate
+per-project tool configs from the global definition.`,
 	RunE: runMCPConsolidate,
 }
 
@@ -312,31 +317,73 @@ func runMCPConsolidate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("finding project root: %w", err)
 	}
-	if root == "" {
-		return fmt.Errorf("no agents.json found; run from a project directory")
+
+	// Check what we have to consolidate
+	agentsCount := 0
+	if cfg != nil {
+		agentsCount = len(cfg.MCP.Servers)
 	}
 
-	if len(cfg.MCP.Servers) == 0 {
-		fmt.Println("No MCP servers in agents.json to consolidate.")
+	externalSources, _ := manage.ListExternalSources()
+	externalCounts := make(map[string]int)
+	for _, src := range externalSources {
+		if servers, err := manage.ReadExternalServers(src); err == nil {
+			externalCounts[src.Label] = len(servers)
+		}
+	}
+
+	totalExternal := 0
+	for _, c := range externalCounts {
+		totalExternal += c
+	}
+
+	if agentsCount == 0 && totalExternal == 0 {
+		fmt.Println("Nothing to consolidate — no MCP servers found in agents.json or external sources.")
 		return nil
 	}
 
 	// Show preview
-	fmt.Printf("Will consolidate %d server(s) from agents.json → ~/.agents/global.json:\n\n", len(cfg.MCP.Servers))
-	names := make([]string, 0, len(cfg.MCP.Servers))
-	for name := range cfg.MCP.Servers {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		def := cfg.MCP.Servers[name]
-		enabled := "enabled"
-		if !agents.IsEnabled(def.Enabled) {
-			enabled = "disabled"
+	if agentsCount > 0 {
+		fmt.Printf("From agents.json (%d server(s)) → ~/.agents/global.json:\n", agentsCount)
+		names := make([]string, 0, agentsCount)
+		for name := range cfg.MCP.Servers {
+			names = append(names, name)
 		}
-		fmt.Printf("  %-30s  (%s)\n", name, enabled)
+		sort.Strings(names)
+		for _, name := range names {
+			def := cfg.MCP.Servers[name]
+			enabledStr := "enabled"
+			if !agents.IsEnabled(def.Enabled) {
+				enabledStr = "disabled"
+			}
+			fmt.Printf("  %-30s  (%s)\n", name, enabledStr)
+		}
+		fmt.Println()
 	}
-	fmt.Println()
+
+	for _, src := range externalSources {
+		count := externalCounts[src.Label]
+		if count == 0 {
+			continue
+		}
+		fmt.Printf("From %s (%d server(s)) → ~/.agents/global.json:\n", src.Label, count)
+		servers, _ := manage.ReadExternalServers(src)
+		names := make([]string, 0, len(servers))
+		for name := range servers {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			fmt.Printf("  %s\n", name)
+		}
+		fmt.Println()
+	}
+
+	if len(externalSources) > 0 && totalExternal > 0 {
+		fmt.Println("Note: servers removed from external sources will be managed by `maestron sync`.")
+		fmt.Println("      Run `maestron sync` in each project to write per-project tool configs.")
+		fmt.Println()
+	}
 
 	if consolidateDryRun {
 		fmt.Println("Dry run — no changes made.")
@@ -361,13 +408,20 @@ func runMCPConsolidate(cmd *cobra.Command, args []string) error {
 	for _, r := range results {
 		switch r.Action {
 		case "moved-to-global":
-			fmt.Printf("  moved   %s → global.json\n", r.Name)
+			fmt.Printf("  moved     %-30s  agents.json → global.json\n", r.Name)
 		case "merged":
-			fmt.Printf("  merged  %s → global.json (merged with existing entry)\n", r.Name)
+			fmt.Printf("  merged    %-30s  agents.json → global.json (merged with existing)\n", r.Name)
+		case "imported":
+			fmt.Printf("  imported  %-30s  %s → global.json\n", r.Name, r.Source)
+		case "removed-from-source":
+			fmt.Printf("  removed   %-30s  from %s (already in global.json)\n", r.Name, r.Source)
 		}
 	}
 
-	fmt.Println("\nDone. agents.json now contains only enable/disable overrides.")
+	fmt.Println("\nDone.")
+	if agentsCount > 0 {
+		fmt.Println("agents.json now contains only enable/disable overrides.")
+	}
 	fmt.Println("Run `maestron sync` to apply changes.")
 	return nil
 }
