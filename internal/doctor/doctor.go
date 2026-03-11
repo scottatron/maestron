@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/scottatron/maestron/internal/agents"
 	"github.com/scottatron/maestron/internal/manage"
 )
 
@@ -195,35 +194,6 @@ func Check(projectRoot string) ([]Issue, error) {
 				Severity: "info",
 				Message:  fmt.Sprintf("Integration %q is enabled but binary %q not found on PATH", integ, binary),
 				Fix:      fmt.Sprintf("Install %s or remove it from integrations.enabled", binary),
-			})
-		}
-	}
-
-	// 10. Enabled integrations have at least one MCP server targeted at them
-	for _, integ := range cfg.Integrations.Enabled {
-		hasServer := false
-		for _, def := range cfg.MCP.Servers {
-			if !agents.IsEnabled(def.Enabled) {
-				continue
-			}
-			if len(def.Targets) == 0 {
-				hasServer = true
-				break
-			}
-			for _, t := range def.Targets {
-				if t == integ {
-					hasServer = true
-					break
-				}
-			}
-			if hasServer {
-				break
-			}
-		}
-		if !hasServer {
-			issues = append(issues, Issue{
-				Severity: "info",
-				Message:  fmt.Sprintf("Integration %q has no enabled MCP servers targeted at it", integ),
 			})
 		}
 	}

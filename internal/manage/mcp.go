@@ -377,11 +377,7 @@ func consolidateAgentsConfig(cfg *agents.AgentsConfig, gc *agents.GlobalMcpConfi
 					merged.Headers[k] = v
 				}
 			}
-			if len(def.Targets) > 0 {
-				merged.Targets = def.Targets
-			}
 			gc.MCPServers[name] = merged
-			res.Action = "merged"
 		} else {
 			defForGlobal := def
 			defForGlobal.Enabled = nil

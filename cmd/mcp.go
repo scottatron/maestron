@@ -16,7 +16,6 @@ import (
 
 var (
 	mcpEnabledOnly bool
-	mcpTarget      string
 )
 
 var mcpCmd = &cobra.Command{
@@ -27,7 +26,6 @@ var mcpCmd = &cobra.Command{
 
 func init() {
 	mcpCmd.Flags().BoolVar(&mcpEnabledOnly, "enabled-only", false, "skip disabled servers")
-	mcpCmd.Flags().StringVar(&mcpTarget, "target", "", "filter by target agent")
 
 	mcpCmd.AddCommand(mcpAddCmd)
 	mcpCmd.AddCommand(mcpRemoveCmd)
@@ -47,18 +45,6 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	for _, s := range servers {
 		if mcpEnabledOnly && !agents.IsEnabled(s.Enabled) {
 			continue
-		}
-		if mcpTarget != "" {
-			found := false
-			for _, t := range s.Targets {
-				if t == mcpTarget {
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
 		}
 		filtered = append(filtered, s)
 	}
@@ -82,7 +68,7 @@ func renderMCPTable(servers []discover.MCPServerInfo) {
 		fmt.Println("No MCP servers found.")
 		return
 	}
-	t := output.NewTable(os.Stdout, []string{"NAME", "COMMAND/URL", "TRANSPORT", "TARGETS", "ENABLED", "SOURCE"})
+	t := output.NewTable(os.Stdout, []string{"NAME", "COMMAND/URL", "TRANSPORT", "ENABLED", "SOURCE"})
 	for _, s := range servers {
 		name := s.Name
 		if s.Shadowed {
@@ -96,10 +82,6 @@ func renderMCPTable(servers []discover.MCPServerInfo) {
 		if cmdStr == "" && s.URL != "" {
 			cmdStr = s.URL
 		}
-		targets := strings.Join(s.Targets, ",")
-		if len(targets) > 40 {
-			targets = targets[:37] + "..."
-		}
 		enabled := "yes"
 		if !agents.IsEnabled(s.Enabled) {
 			enabled = "no"
@@ -108,7 +90,7 @@ func renderMCPTable(servers []discover.MCPServerInfo) {
 		if s.Shadowed {
 			source = source + " (shadowed)"
 		}
-		t.Row(name, cmdStr, s.Transport, targets, enabled, source)
+		t.Row(name, cmdStr, s.Transport, enabled, source)
 	}
 	t.Flush()
 }
@@ -121,7 +103,6 @@ var (
 	addURL         string
 	addEnv         []string
 	addTransport   string
-	addTargets     []string
 	addDescription string
 	addDisabled    bool
 	addGlobal      bool
@@ -140,7 +121,6 @@ func init() {
 	mcpAddCmd.Flags().StringVar(&addURL, "url", "", "URL (http/sse transport)")
 	mcpAddCmd.Flags().StringArrayVar(&addEnv, "env", nil, "environment variable KEY=VALUE (repeatable)")
 	mcpAddCmd.Flags().StringVar(&addTransport, "transport", "", "transport: stdio, http, sse (auto-detected if omitted)")
-	mcpAddCmd.Flags().StringArrayVar(&addTargets, "target", nil, "target integration (repeatable)")
 	mcpAddCmd.Flags().StringVar(&addDescription, "description", "", "server description")
 	mcpAddCmd.Flags().BoolVar(&addDisabled, "disabled", false, "add server in disabled state")
 	mcpAddCmd.Flags().BoolVar(&addGlobal, "global", false, "add to ~/.agents/global.json instead of agents.json")
@@ -175,7 +155,6 @@ func runMCPAdd(cmd *cobra.Command, args []string) error {
 		Command:     addCommand,
 		Args:        addArgs,
 		URL:         addURL,
-		Targets:     addTargets,
 		Enabled:     agents.BoolPtr(!addDisabled),
 	}
 	if len(env) > 0 {

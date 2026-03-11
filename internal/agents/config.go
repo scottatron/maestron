@@ -34,7 +34,6 @@ type MCPServerDef struct {
 	Env         map[string]string `json:"env,omitempty"`
 	Headers     map[string]string `json:"headers,omitempty"`
 	URL         string            `json:"url,omitempty"`
-	Targets     []string          `json:"targets,omitempty"`
 	Enabled     *bool             `json:"enabled,omitempty"`
 }
 

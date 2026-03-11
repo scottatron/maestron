@@ -42,7 +42,7 @@ func ListExternalSources() ([]ExternalSource, error) {
 }
 
 // ReadExternalServers reads MCP server definitions from an external source.
-// Returns a map of server name → MCPServerDef (with appropriate Transport/Targets set).
+// Returns a map of server name → MCPServerDef.
 func ReadExternalServers(src ExternalSource) (map[string]agents.MCPServerDef, error) {
 	switch src.Label {
 	case "claude-settings":
@@ -130,7 +130,6 @@ func readCopilotConfigServers(path string) (map[string]agents.MCPServerDef, erro
 			Env:       srv.Env,
 			URL:       srv.URL,
 			Headers:   srv.Headers,
-			Targets:   []string{"copilot"},
 			Enabled:   agents.BoolPtr(true),
 		}
 	}
@@ -157,7 +156,6 @@ func readCodexConfigServers(path string) (map[string]agents.MCPServerDef, error)
 			Transport: "stdio",
 			Command:   srv.Command,
 			Args:      srv.Args,
-			Targets:   []string{"codex"},
 			Enabled:   agents.BoolPtr(true),
 		}
 	}

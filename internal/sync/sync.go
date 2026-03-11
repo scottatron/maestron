@@ -159,10 +159,6 @@ func mergeServers(gc *agents.GlobalMcpConfig, cfg *agents.AgentsConfig, lo *mana
 					merged.Headers[k2] = v2
 				}
 			}
-			if len(proj.Targets) > 0 {
-				merged.Targets = proj.Targets
-			}
-			// *bool: nil means "don't override", non-nil overrides
 			if proj.Enabled != nil {
 				merged.Enabled = proj.Enabled
 			}
@@ -203,22 +199,12 @@ func mergeServers(gc *agents.GlobalMcpConfig, cfg *agents.AgentsConfig, lo *mana
 	return result
 }
 
-// filterServersForIntegration returns servers enabled and targeted at the given integration.
-func filterServersForIntegration(servers map[string]agents.MCPServerDef, integration string) map[string]agents.MCPServerDef {
+// filterServersForIntegration returns all enabled servers.
+func filterServersForIntegration(servers map[string]agents.MCPServerDef, _ string) map[string]agents.MCPServerDef {
 	result := make(map[string]agents.MCPServerDef)
 	for name, def := range servers {
-		if !agents.IsEnabled(def.Enabled) {
-			continue
-		}
-		if len(def.Targets) == 0 {
+		if agents.IsEnabled(def.Enabled) {
 			result[name] = def
-			continue
-		}
-		for _, t := range def.Targets {
-			if t == integration {
-				result[name] = def
-				break
-			}
 		}
 	}
 	return result
