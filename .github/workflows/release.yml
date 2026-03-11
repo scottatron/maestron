@@ -57,24 +57,20 @@ jobs:
       - name: Build binaries
         run: |
           TAG="${GITHUB_REF_NAME}"
-          MODULE="github.com/scottatron/maestron"
           mkdir -p dist
 
-          # Use go install with GOPROXY=direct so debug.BuildInfo.Main.Version
-          # is set to the tagged version — no ldflags needed.
           for PLATFORM in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             OS="${PLATFORM%/*}"
             ARCH="${PLATFORM#*/}"
-            GOBIN="$(pwd)/dist/${OS}_${ARCH}"
-            mkdir -p "$GOBIN"
+            OUTPUT="dist/maestron_${TAG}_${OS}_${ARCH}"
 
-            GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 GOBIN="$GOBIN" GOPROXY=direct \
-              go install -trimpath "${MODULE}@${TAG}"
+            GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 \
+              go build -trimpath \
+                -ldflags="-s -w -X github.com/scottatron/maestron/cmd.version=${TAG}" \
+                -o "$OUTPUT" .
 
-            mv "${GOBIN}/maestron" "dist/maestron_${TAG}_${OS}_${ARCH}"
+            echo "Built $OUTPUT ($(du -sh $OUTPUT | cut -f1))"
           done
-
-          ls -lh dist/
 
       - name: Generate checksums
         run: |

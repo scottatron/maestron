@@ -25,8 +25,11 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
+// version is set by -ldflags for CI-built releases; debug.BuildInfo overrides
+// it for binaries installed via `go install module@version`.
+var version = "dev"
+
 func init() {
-	version := "dev"
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		version = info.Main.Version
 	}
