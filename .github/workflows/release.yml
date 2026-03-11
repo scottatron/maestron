@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history for changelog
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Generate changelog
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | sed -n '2p')
+
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${PREV_TAG}..HEAD"
+          fi
+
+          BREAKING=$(git log $RANGE --pretty=format:"- %s (%h)" | grep -iE '^- (feat|fix|refactor|perf|chore|docs)(\(.+\))?!:' || true)
+          FEATURES=$(git log $RANGE --pretty=format:"- %s (%h)" | grep -iE '^- feat(\(.+\))?[^!]:' || true)
+          FIXES=$(git log $RANGE --pretty=format:"- %s (%h)" | grep -iE '^- fix(\(.+\))?[^!]:' || true)
+          OTHERS=$(git log $RANGE --pretty=format:"- %s (%h)" | grep -viE '^- (feat|fix|chore|docs|ci|test|style|refactor|perf)(\(.+\))?[!:]' || true)
+
+          BODY=""
+          [ -n "$BREAKING" ] && BODY="${BODY}## Breaking Changes\n${BREAKING}\n\n"
+          [ -n "$FEATURES" ] && BODY="${BODY}## Features\n${FEATURES}\n\n"
+          [ -n "$FIXES" ]    && BODY="${BODY}## Bug Fixes\n${FIXES}\n\n"
+          [ -n "$OTHERS" ]   && BODY="${BODY}## Other Changes\n${OTHERS}\n\n"
+          [ -z "$BODY" ]     && BODY="No notable changes.\n"
+
+          if [ -n "$PREV_TAG" ]; then
+            BODY="${BODY}**Full diff:** https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}\n"
+          fi
+
+          printf "%b" "$BODY" > /tmp/changelog.md
+          cat /tmp/changelog.md
+
+      - name: Build binaries
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          MODULE="github.com/scottatron/maestron"
+          mkdir -p dist
+
+          # Use go install with GOPROXY=direct so debug.BuildInfo.Main.Version
+          # is set to the tagged version — no ldflags needed.
+          for PLATFORM in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            OS="${PLATFORM%/*}"
+            ARCH="${PLATFORM#*/}"
+            GOBIN="$(pwd)/dist/${OS}_${ARCH}"
+            mkdir -p "$GOBIN"
+
+            GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 GOBIN="$GOBIN" GOPROXY=direct \
+              go install -trimpath "${MODULE}@${TAG}"
+
+            mv "${GOBIN}/maestron" "dist/maestron_${TAG}_${OS}_${ARCH}"
+          done
+
+          ls -lh dist/
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum maestron_* > checksums.txt
+          cat checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: /tmp/changelog.md
+          files: |
+            dist/maestron_*
+            dist/checksums.txt
+          fail_on_unmatched_files: true

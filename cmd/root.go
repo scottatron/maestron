@@ -9,8 +9,6 @@ import (
 	"github.com/scottatron/maestron/internal/output"
 )
 
-var version = "dev"
-
 var rootCmd = &cobra.Command{
 	Use:   "maestron",
 	Short: "Node-level agent introspection tool",
@@ -28,10 +26,9 @@ func Execute() error {
 }
 
 func init() {
-	if version == "dev" {
-		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-			version = info.Main.Version
-		}
+	version := "dev"
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		version = info.Main.Version
 	}
 	rootCmd.Version = version
 	rootCmd.SetVersionTemplate(fmt.Sprintf("maestron version %s\n", version))
