@@ -11,6 +11,7 @@ import (
 var (
 	styleDiffAdded   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#15803D", Dark: "#4ADE80"})
 	styleDiffRemoved = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B91C1C", Dark: "#F87171"})
+	styleDiffHeader  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "#1D4ED8", Dark: "#93C5FD"})
 )
 
 // stripURLScheme removes the scheme (e.g. "https://", "git://") from a URL,
@@ -50,6 +51,7 @@ func tildeSubstPath(home, path string) string {
 }
 
 // colorDiff adds colors to diff output lines. Uses lipgloss when on a TTY.
+// Lines starting with "=== " are treated as file section headers (bold blue).
 func colorDiff(diff string) string {
 	isTTY := term.IsTerminal(os.Stdout.Fd())
 	lines := strings.Split(diff, "\n")
@@ -65,6 +67,12 @@ func colorDiff(diff string) string {
 		case strings.HasPrefix(line, "+ "):
 			if isTTY {
 				sb.WriteString(styleDiffAdded.Render(line) + "\n")
+			} else {
+				sb.WriteString(line + "\n")
+			}
+		case strings.HasPrefix(line, "=== "):
+			if isTTY {
+				sb.WriteString(styleDiffHeader.Render(line) + "\n")
 			} else {
 				sb.WriteString(line + "\n")
 			}
