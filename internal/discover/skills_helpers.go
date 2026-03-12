@@ -21,13 +21,16 @@ func tildeSubst(path, home string) string {
 	return path
 }
 
-// skillsAncestor walks up from filePath's parent toward root and returns
+// skillsAncestor walks up from filePath's grandparent toward root and returns
 // the full absolute path of the nearest ancestor directory whose base name
 // contains "skills" (case-insensitive). Returns "" if none is found within root.
 // The root directory itself is not considered an eligible ancestor.
+// We start from the grandparent (not the parent) so that skill name dirs whose
+// names happen to contain "skills" (e.g. "writing-skills/SKILL.md") are not
+// mistaken for the skills root.
 func skillsAncestor(filePath, root string) string {
 	root = filepath.Clean(root)
-	dir := filepath.Dir(filePath) // start at the skill name dir (parent of SKILL.md)
+	dir := filepath.Dir(filepath.Dir(filePath)) // start at grandparent of SKILL.md (skip skill name dir)
 	for {
 		// Stop at root or if we've walked above root
 		if dir == root || !strings.HasPrefix(dir, root+string(filepath.Separator)) {

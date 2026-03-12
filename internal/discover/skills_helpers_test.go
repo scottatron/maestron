@@ -38,6 +38,8 @@ func TestSkillsAncestor(t *testing.T) {
 		{"/workspace/.codex/skills/category/foo/SKILL.md", "/workspace/.codex/skills"},
 		{"/workspace/skills/bar/SKILL.md", "/workspace/skills"},
 		{"/workspace/agent-skills/baz/SKILL.md", "/workspace/agent-skills"},
+		// Skill whose dir name contains "skills" — must not be mistaken for the root
+		{"/workspace/skills/writing-skills/SKILL.md", "/workspace/skills"},
 		{"/workspace/src/foo/SKILL.md", ""},
 		{"/workspace/SKILL.md", ""},
 	}
