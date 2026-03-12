@@ -30,6 +30,7 @@ var (
 )
 
 var skillsSource string
+var skillsScanWorkspace bool
 
 var skillsCmd = &cobra.Command{
 	Use:   "skills",
@@ -39,10 +40,13 @@ var skillsCmd = &cobra.Command{
 
 func init() {
 	skillsCmd.Flags().StringVar(&skillsSource, "source", "", `filter by source path (e.g. "claude", "codex", "superpowers")`)
+	skillsCmd.Flags().BoolVar(&skillsScanWorkspace, "scan-workspace", false, "scan the current directory for workspace skills when outside a git repo")
 }
 
 func runSkills(cmd *cobra.Command, args []string) error {
-	skills, err := discover.ListSkills()
+	skills, err := discover.ListSkillsWithOptions(discover.ListSkillsOptions{
+		ScanWorkspace: skillsScanWorkspace,
+	})
 	if err != nil {
 		return err
 	}

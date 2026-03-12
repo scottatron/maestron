@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/scottatron/maestron/internal/agents"
 	"github.com/scottatron/maestron/internal/platform"
 )
 
@@ -25,6 +25,21 @@ type skillFrontmatter struct {
 // using a content-hash cache to avoid re-parsing unchanged SKILL.md files.
 // Global paths are searched first; workspace paths follow.
 func ListSkills() ([]SkillInfo, error) {
+	return ListSkillsWithOptions(ListSkillsOptions{})
+}
+
+// ListSkillsOptions configures skill discovery behavior.
+type ListSkillsOptions struct {
+	// ScanWorkspace forces workspace scanning when not inside a git repo. The
+	// scan starts at the current working directory in that case.
+	ScanWorkspace bool
+}
+
+// ListSkillsWithOptions discovers all skills from global and workspace sources,
+// using a content-hash cache to avoid re-parsing unchanged SKILL.md files.
+// Workspace scanning starts from the git repo root when inside a repo. Outside
+// a repo, only global paths are scanned unless ScanWorkspace is true.
+func ListSkillsWithOptions(opts ListSkillsOptions) ([]SkillInfo, error) {
 	home, err := platform.HomeDir()
 	if err != nil {
 		return nil, err
@@ -38,7 +53,10 @@ func ListSkills() ([]SkillInfo, error) {
 	skills = append(skills, walkGlobalSkills(home, cache)...)
 
 	// 2. Workspace paths
-	root, _, _ := agents.FindAgentsConfig()
+	root, err := workspaceSkillsRoot(opts)
+	if err != nil {
+		return nil, err
+	}
 	if root != "" {
 		skills = append(skills, walkWorkspaceSkills(root, home, cache)...)
 	}
@@ -172,6 +190,26 @@ func dirContentHash(dir string) (string, error) {
 		h.Write(data)
 	}
 	return fmt.Sprintf("sha256:%x", h.Sum(nil)), nil
+}
+
+func workspaceSkillsRoot(opts ListSkillsOptions) (string, error) {
+	if root, err := gitRepoRoot(); err != nil {
+		return "", err
+	} else if root != "" {
+		return root, nil
+	}
+	if !opts.ScanWorkspace {
+		return "", nil
+	}
+	return os.Getwd()
+}
+
+func gitRepoRoot() (string, error) {
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return "", nil
+	}
+	return filepath.Clean(strings.TrimSpace(string(out))), nil
 }
 
 // loadSkillCached reads a SKILL.md file, using the cache to skip frontmatter

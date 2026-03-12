@@ -3,6 +3,7 @@ package discover
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -154,4 +155,89 @@ func TestWalkWorkspaceSkills_AncestorGrouping(t *testing.T) {
 	if !sources[filepath.Join(root, "agent-skills")] {
 		t.Errorf("expected agent-skills source, got: %v", sources)
 	}
+}
+
+func TestWorkspaceSkillsRoot_UsesGitRepoRoot(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	wantRepo := canonicalPath(t, repo)
+
+	nested := filepath.Join(repo, "nested", "dir")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	withWorkingDir(t, nested, func() {
+		root, err := workspaceSkillsRoot(ListSkillsOptions{})
+		if err != nil {
+			t.Fatalf("workspaceSkillsRoot returned error: %v", err)
+		}
+		if root != wantRepo {
+			t.Fatalf("workspaceSkillsRoot = %q, want %q", root, wantRepo)
+		}
+	})
+}
+
+func TestWorkspaceSkillsRoot_SkipsNonRepoByDefault(t *testing.T) {
+	dir := t.TempDir()
+
+	withWorkingDir(t, dir, func() {
+		root, err := workspaceSkillsRoot(ListSkillsOptions{})
+		if err != nil {
+			t.Fatalf("workspaceSkillsRoot returned error: %v", err)
+		}
+		if root != "" {
+			t.Fatalf("workspaceSkillsRoot = %q, want empty", root)
+		}
+	})
+}
+
+func TestWorkspaceSkillsRoot_CanForceCurrentDirOutsideRepo(t *testing.T) {
+	dir := t.TempDir()
+	wantDir := canonicalPath(t, dir)
+
+	withWorkingDir(t, dir, func() {
+		root, err := workspaceSkillsRoot(ListSkillsOptions{ScanWorkspace: true})
+		if err != nil {
+			t.Fatalf("workspaceSkillsRoot returned error: %v", err)
+		}
+		if root != wantDir {
+			t.Fatalf("workspaceSkillsRoot = %q, want %q", root, wantDir)
+		}
+	})
+}
+
+func withWorkingDir(t *testing.T, dir string, fn func()) {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir(%q): %v", dir, err)
+	}
+	defer func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatalf("restore Chdir(%q): %v", wd, err)
+		}
+	}()
+	fn()
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v failed: %v\n%s", args, err, out)
+	}
+}
+
+func canonicalPath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved
+	}
+	return filepath.Clean(path)
 }
