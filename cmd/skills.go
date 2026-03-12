@@ -84,6 +84,55 @@ func renderSkillsTable(skills []discover.SkillInfo, manifest *manage.SkillsManif
 	renderSkillsGrouped(skills, manifest, home, ttyWidth())
 }
 
+// metaLayout holds the pre-computed column widths for aligned metadata rendering.
+type metaLayout struct {
+	sourceWidth int // max visible width of source value across all managed records
+	shaWidth    int // 7 if any git record has a SHA, else 0
+	refWidth    int // max visible width of ref value across git records
+}
+
+// computeMetaLayout scans all managed skills to determine column widths for alignment.
+func computeMetaLayout(skills []discover.SkillInfo, manifest *manage.SkillsManifest, home string) metaLayout {
+	var layout metaLayout
+	if manifest == nil {
+		return layout
+	}
+	for _, s := range skills {
+		if s.ManagedRelation != discover.ManagedRelationIs {
+			continue
+		}
+		record := manifest.Skills[s.Name]
+		if record == nil {
+			continue
+		}
+		sv := managedSourceVal(record, home)
+		if len(sv) > layout.sourceWidth {
+			layout.sourceWidth = len(sv)
+		}
+		if record.Source.Type == "git" {
+			if shortSHA(record.Source.ResolvedSHA) != "" {
+				layout.shaWidth = 7
+			}
+			if n := len(record.Source.Ref); n > layout.refWidth {
+				layout.refWidth = n
+			}
+		}
+	}
+	return layout
+}
+
+// managedSourceVal returns the raw (unstyled) source value string for a record.
+func managedSourceVal(r *manage.SkillRecord, home string) string {
+	if r.Source.Type == "git" {
+		return stripURLScheme(r.Source.URL)
+	}
+	srcPath := tildeSubstPath(home, r.Source.Path)
+	if r.Source.Hostname != "" {
+		return r.Source.Hostname + ":" + srcPath
+	}
+	return srcPath
+}
+
 func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsManifest, home string, width int) {
 	// Calculate name column width from the widest name, capped at 40.
 	maxName := 0
@@ -103,6 +152,9 @@ func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsMan
 	if descWidth < 20 {
 		descWidth = 20
 	}
+
+	// Pre-compute metadata column widths for cross-group alignment.
+	layout := computeMetaLayout(skills, manifest, home)
 
 	// Collect groups in order of first appearance.
 	type group struct {
@@ -146,7 +198,7 @@ func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsMan
 			switch {
 			case s.ManagedRelation == discover.ManagedRelationIs && record != nil:
 				// This IS the managed copy — show its full metadata.
-				fmt.Printf("  %s  %s\n", pad, renderManagedMeta(record))
+				fmt.Printf("  %s  %s\n", pad, renderManagedMeta(record, home, layout))
 
 			case isSource:
 				// This path is where the managed copy was installed from.
@@ -194,32 +246,41 @@ func ttyWidth() int {
 	return 120
 }
 
-// renderManagedMeta formats the managed-skill metadata as inline key: value pairs.
-func renderManagedMeta(r *manage.SkillRecord) string {
+// renderManagedMeta formats the managed-skill metadata as inline key: value pairs,
+// padding each column to the widths in layout so fields align across all skills.
+func renderManagedMeta(r *manage.SkillRecord, home string, layout metaLayout) string {
 	kv := func(key, val string) string {
 		return styleManagedKey.Render(key+":") + " " + styleManagedVal.Render(val)
 	}
+	spacer := func(n int) string { return strings.Repeat(" ", n) }
 
 	var parts []string
+
+	// source — padded to the widest source value across all records.
+	sv := managedSourceVal(r, home)
+	parts = append(parts, kv("source", fmt.Sprintf("%-*s", layout.sourceWidth, sv)))
+
 	if r.Source.Type == "git" {
-		parts = append(parts, kv("source", stripURLScheme(r.Source.URL)))
-		if r.Source.Ref != "" {
-			parts = append(parts, kv("ref", r.Source.Ref))
+		if layout.refWidth > 0 {
+			parts = append(parts, kv("ref", fmt.Sprintf("%-*s", layout.refWidth, r.Source.Ref)))
 		}
-		if sha := shortSHA(r.Source.ResolvedSHA); sha != "" {
+		if layout.shaWidth > 0 {
+			sha := shortSHA(r.Source.ResolvedSHA)
+			if sha == "" {
+				sha = spacer(layout.shaWidth)
+			}
 			parts = append(parts, kv("sha", sha))
 		}
 	} else {
-		srcPath := r.Source.Path
-		if home, err := platform.HomeDir(); err == nil {
-			srcPath = tildeSubstPath(home, srcPath)
+		// Local: insert blank spacers so "updated:" aligns with git records.
+		if layout.refWidth > 0 {
+			parts = append(parts, spacer(len("ref: ")+layout.refWidth))
 		}
-		sourceVal := srcPath
-		if r.Source.Hostname != "" {
-			sourceVal = r.Source.Hostname + ":" + srcPath
+		if layout.shaWidth > 0 {
+			parts = append(parts, spacer(len("sha: ")+layout.shaWidth))
 		}
-		parts = append(parts, kv("source", sourceVal))
 	}
+
 	parts = append(parts, kv("updated", r.UpdatedAt.Format("2006-01-02")))
 
 	return strings.Join(parts, "  ")
