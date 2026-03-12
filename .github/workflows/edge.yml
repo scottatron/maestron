@@ -28,21 +28,32 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Compute edge tag
+        if: steps.check.outputs.skip == 'false'
+        id: tag
+        run: |
+          # Find the latest stable release tag (exact semver, no pre-release suffix)
+          LATEST=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          if [ -z "$LATEST" ]; then
+            EDGE_TAG="v0.0.1-edge"
+          else
+            # Bump patch and append -edge: v0.4.2 → v0.4.3-edge
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+            EDGE_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))-edge"
+          fi
+          echo "edge_tag=${EDGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=${LATEST}" >> "$GITHUB_OUTPUT"
+
       - name: Set up Go
         if: steps.check.outputs.skip == 'false'
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
-      - name: Get version
-        if: steps.check.outputs.skip == 'false'
-        id: version
-        run: echo "version=$(git describe --tags --always)" >> "$GITHUB_OUTPUT"
-
       - name: Build binaries
         if: steps.check.outputs.skip == 'false'
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          EDGE_TAG: ${{ steps.tag.outputs.edge_tag }}
         run: |
           mkdir -p dist
           for PLATFORM in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
@@ -50,8 +61,8 @@ jobs:
             ARCH="${PLATFORM#*/}"
             GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 \
               go build -trimpath \
-                -ldflags="-s -w -X github.com/scottatron/maestron/cmd.version=${VERSION}" \
-                -o "dist/maestron_${VERSION}_${OS}_${ARCH}" .
+                -ldflags="-s -w -X github.com/scottatron/maestron/cmd.version=${EDGE_TAG}" \
+                -o "dist/maestron_${EDGE_TAG}_${OS}_${ARCH}" .
           done
 
       - name: Generate checksums
@@ -60,8 +71,9 @@ jobs:
 
       - name: Generate changelog since last release
         if: steps.check.outputs.skip == 'false'
+        env:
+          PREV_TAG: ${{ steps.tag.outputs.prev_tag }}
         run: |
-          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | head -1)
           RANGE="${PREV_TAG:+${PREV_TAG}..HEAD}"
 
           FEATURES=$(git log ${RANGE:-HEAD} --pretty=format:"- %s (%h)" | grep -iE '^- feat(\(.+\))?[^!]:' || true)
@@ -82,18 +94,20 @@ jobs:
 
       - name: Move edge tag to HEAD
         if: steps.check.outputs.skip == 'false'
+        env:
+          EDGE_TAG: ${{ steps.tag.outputs.edge_tag }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f edge
-          git push -f origin edge
+          git tag -f "$EDGE_TAG"
+          git push -f origin "$EDGE_TAG"
 
       - name: Update edge release
         if: steps.check.outputs.skip == 'false'
         uses: softprops/action-gh-release@v2.5.0
         with:
-          tag_name: edge
-          name: "Edge (${{ steps.version.outputs.version }})"
+          tag_name: ${{ steps.tag.outputs.edge_tag }}
+          name: "Edge (${{ steps.tag.outputs.edge_tag }})"
           prerelease: true
           make_latest: false
           body_path: /tmp/edge-changelog.md
