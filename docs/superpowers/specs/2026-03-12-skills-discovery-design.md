@@ -165,7 +165,9 @@ func (c *SkillCache) Prune() // removes entries not touched during current walk
 
 ### `internal/discover/types.go`
 
-No structural changes. `SkillInfo.Source` remains a `string`; it now holds a tilde-substituted path.
+`SkillInfo.Source` remains a `string`; it now holds a tilde-substituted path.
+`SkillInfo` also gains additive metadata fields for managed-skill integration:
+`ContentHash` and `ManagedRelation`.
 
 ### `cmd/skills.go`
 
@@ -196,4 +198,5 @@ Add or update unit tests covering:
 - No configuration file for search paths
 - No opt-in/opt-out per directory
 - No watching for changes (always re-walk)
-- No change to `SkillInfo` fields
+- No changes to existing `SkillInfo` fields; only additive fields `ContentHash`
+  and `ManagedRelation` are introduced
