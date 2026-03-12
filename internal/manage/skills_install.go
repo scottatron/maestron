@@ -37,7 +37,9 @@ func StageGitClone(url, ref string) (tmpdir, resolvedSHA string, cleanup func(),
 
 	var cloneArgs []string
 	if shaPattern.MatchString(ref) {
-		cloneArgs = []string{"clone", "--depth=1", url, tmpdir}
+		// Full clone required: --depth=1 only fetches the tip commit, so
+		// checking out an arbitrary SHA that isn't the tip will fail.
+		cloneArgs = []string{"clone", url, tmpdir}
 	} else if ref != "" {
 		cloneArgs = []string{"clone", "--depth=1", "--branch", ref, url, tmpdir}
 	} else {
@@ -93,9 +95,28 @@ func ScanSkills(dir, repoURL string) ([]SkillCandidate, error) {
 	return candidates, err
 }
 
+// validateSkillName returns an error if name contains path separators or
+// dot-only components that could escape the intended install directory.
+func validateSkillName(name string) error {
+	if name == "" {
+		return fmt.Errorf("skill name must not be empty")
+	}
+	if strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("skill name %q must not contain path separators", name)
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("skill name %q is not allowed", name)
+	}
+	return nil
+}
+
 // InstallFromStaged copies a skill from an already-cloned stagedir into the
 // skills directory. url, ref, and resolvedSHA describe the source for the manifest.
 func InstallFromStaged(home, stagedir, subpath, name, url, ref, resolvedSHA string) (*SkillRecord, error) {
+	if err := validateSkillName(name); err != nil {
+		return nil, err
+	}
+
 	srcDir := stagedir
 	if subpath != "" {
 		srcDir = filepath.Join(stagedir, subpath)
@@ -154,9 +175,17 @@ func InstallFromLocal(home, srcPath, name string) (*SkillRecord, error) {
 	if strings.HasPrefix(srcPath, "~/") {
 		srcPath = filepath.Join(home, srcPath[2:])
 	}
+	// Normalize to absolute path so manifest entries are stable regardless of
+	// the caller's working directory. Save() will tilde-substitute for portability.
+	if abs, err := filepath.Abs(srcPath); err == nil {
+		srcPath = abs
+	}
 
 	if name == "" {
 		name = filepath.Base(srcPath)
+	}
+	if err := validateSkillName(name); err != nil {
+		return nil, err
 	}
 
 	dest := filepath.Join(home, ".agents", "skills", name)
@@ -215,7 +244,13 @@ func contentHash(dir string) (string, error) {
 	return fmt.Sprintf("sha256:%x", h.Sum(nil)), nil
 }
 
+// vcsDirs is the set of version-control metadata directories to skip during copy.
+var vcsDirs = map[string]bool{
+	".git": true, ".hg": true, ".svn": true, ".bzr": true, "_darcs": true,
+}
+
 // copyDir copies src directory to dst, replacing dst if it exists.
+// VCS metadata directories (.git, .hg, etc.) are skipped.
 func copyDir(src, dst string) error {
 	if err := os.RemoveAll(dst); err != nil {
 		return err
@@ -226,6 +261,9 @@ func copyDir(src, dst string) error {
 	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if d.IsDir() && vcsDirs[d.Name()] {
+			return filepath.SkipDir
 		}
 		rel, _ := filepath.Rel(src, path)
 		target := filepath.Join(dst, rel)

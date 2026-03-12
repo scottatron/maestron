@@ -239,13 +239,28 @@ func walkClaudePlugins(cacheRoot, home string, cache *SkillCache) []SkillInfo {
 // Each skill's source label is the tilde-substituted path of its nearest
 // ancestor directory whose name contains "skills". Skills with no such ancestor
 // are skipped.
+// vcsDir reports whether name is a version-control metadata directory to skip.
+func vcsDir(name string) bool {
+	switch name {
+	case ".git", ".hg", ".svn", ".bzr", "_darcs":
+		return true
+	}
+	return false
+}
+
 func walkWorkspaceSkills(root, home string, cache *SkillCache) []SkillInfo {
 	var skills []SkillInfo
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error { //nolint:errcheck
 		if err != nil {
 			return nil
 		}
-		if info.IsDir() || info.Name() != "SKILL.md" {
+		if info.IsDir() {
+			if vcsDir(info.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.Name() != "SKILL.md" {
 			return nil
 		}
 		ancestor := skillsAncestor(path, root)

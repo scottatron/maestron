@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -43,8 +44,13 @@ func shortSHA(sha string) string {
 }
 
 // tildeSubstPath replaces the home directory prefix with "~".
+// Checks for a separator boundary to avoid false matches (e.g. home=/Users/a
+// must not match /Users/al).
 func tildeSubstPath(home, path string) string {
-	if strings.HasPrefix(path, home) {
+	if path == home {
+		return "~"
+	}
+	if strings.HasPrefix(path, home+string(filepath.Separator)) {
 		return "~" + path[len(home):]
 	}
 	return path

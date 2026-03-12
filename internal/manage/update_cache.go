@@ -24,7 +24,10 @@ func updateCachePath(home string) string {
 	return filepath.Join(home, ".agents", "maestron", "update-check.json")
 }
 
-// LoadUpdateCache reads the update check cache. Returns an empty cache on missing file.
+// LoadUpdateCache reads the update check cache. Returns an empty cache if the
+// file does not exist or is corrupt/unparsable. Returns an error only for
+// unexpected read failures (e.g. permission denied). Always returns a non-nil
+// cache so callers can safely use it without nil checks.
 func LoadUpdateCache(home string) (*UpdateCheckCache, error) {
 	c := &UpdateCheckCache{Skills: map[string]*UpdateCheckEntry{}}
 	data, err := os.ReadFile(updateCachePath(home))
@@ -32,10 +35,10 @@ func LoadUpdateCache(home string) (*UpdateCheckCache, error) {
 		return c, nil
 	}
 	if err != nil {
-		return nil, err
+		return c, err
 	}
 	if err := json.Unmarshal(data, c); err != nil {
-		return nil, err
+		return c, nil // treat corrupt cache as empty
 	}
 	if c.Skills == nil {
 		c.Skills = map[string]*UpdateCheckEntry{}
