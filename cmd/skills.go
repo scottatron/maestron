@@ -144,7 +144,7 @@ func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsMan
 				record.Source.Path == filepath.Dir(s.Path)
 
 			switch {
-			case s.ManagedRelation == discover.ManagedRelationIs:
+			case s.ManagedRelation == discover.ManagedRelationIs && record != nil:
 				// This IS the managed copy — show its full metadata.
 				fmt.Printf("  %s  %s\n", pad, renderManagedMeta(record))
 
