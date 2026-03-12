@@ -59,17 +59,18 @@ func runSkills(cmd *cobra.Command, args []string) error {
 
 	// Load managed skills manifest for inline annotations (best-effort).
 	var manifest *manage.SkillsManifest
-	if home, err := platform.HomeDir(); err == nil {
+	home, _ := platform.HomeDir()
+	if home != "" {
 		manifest, _ = manage.LoadManifest(home)
 	}
 
 	output.Print(skills, func() {
-		renderSkillsTable(skills, manifest)
+		renderSkillsTable(skills, manifest, home)
 	})
 	return nil
 }
 
-func renderSkillsTable(skills []discover.SkillInfo, manifest *manage.SkillsManifest) {
+func renderSkillsTable(skills []discover.SkillInfo, manifest *manage.SkillsManifest, home string) {
 	if len(skills) == 0 {
 		fmt.Println("No skills found.")
 		return
@@ -80,10 +81,10 @@ func renderSkillsTable(skills []discover.SkillInfo, manifest *manage.SkillsManif
 		return
 	}
 
-	renderSkillsGrouped(skills, manifest, ttyWidth())
+	renderSkillsGrouped(skills, manifest, home, ttyWidth())
 }
 
-func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsManifest, width int) {
+func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsManifest, home string, width int) {
 	// Calculate name column width from the widest name, capped at 40.
 	maxName := 0
 	for _, s := range skills {
@@ -130,23 +131,41 @@ func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsMan
 			name := styleName.Render(fmt.Sprintf("%-*s", maxName, s.Name))
 			fmt.Printf("  %s  %s\n", name, styleDesc.Render(desc))
 			pad := strings.Repeat(" ", maxName)
+
+			var record *manage.SkillRecord
 			if manifest != nil {
-				if record, ok := manifest.Skills[s.Name]; ok {
-					fmt.Printf("  %s  %s\n", pad, renderManagedMeta(record))
-				}
+				record = manifest.Skills[s.Name]
 			}
-			switch s.ManagedRelation {
-			case discover.ManagedRelationMatches:
-				if manifest != nil {
-					if record, ok := manifest.Skills[s.Name]; ok &&
-						record.Source.Type == "local" &&
-						record.Source.Path == filepath.Dir(s.Path) {
-						fmt.Printf("  %s  %s\n", pad, styleManagedKey.Render("↑ source of managed version"))
-						break
-					}
+
+			// Determine if this occurrence is the local source the managed copy
+			// was installed from.
+			isSource := record != nil &&
+				record.Source.Type == "local" &&
+				record.Source.Path == filepath.Dir(s.Path)
+
+			switch {
+			case s.ManagedRelation == discover.ManagedRelationIs:
+				// This IS the managed copy — show its full metadata.
+				fmt.Printf("  %s  %s\n", pad, renderManagedMeta(record))
+
+			case isSource:
+				// This path is where the managed copy was installed from.
+				// Show a compact "source of" line with a sync indicator.
+				installPath := tildeSubstPath(home, record.InstallPath)
+				var syncLabel string
+				if s.ManagedRelation == discover.ManagedRelationDiffers {
+					syncLabel = "  " + styleConflict.Render("⚠ out of sync")
+				} else {
+					syncLabel = "  " + styleAlias.Render("✓ in sync")
 				}
+				fmt.Printf("  %s  %s%s\n", pad,
+					styleManagedKey.Render("↑ source of: ")+styleManagedVal.Render(installPath),
+					syncLabel)
+
+			case s.ManagedRelation == discover.ManagedRelationMatches:
 				fmt.Printf("  %s  %s\n", pad, styleAlias.Render("✓ matches managed version"))
-			case discover.ManagedRelationDiffers:
+
+			case s.ManagedRelation == discover.ManagedRelationDiffers:
 				fmt.Printf("  %s  %s\n", pad, styleConflict.Render("⚠ differs from managed version"))
 			}
 		}
