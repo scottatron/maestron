@@ -38,11 +38,11 @@ Each of the following directories is walked recursively. Every `SKILL.md` found 
 | `~/.codex/skills` | `~/.codex/skills` |
 | `~/.copilot/skills` | `~/.copilot/skills` |
 | `~/.github/skills` | `~/.github/skills` |
-| `~/.claude/plugins/cache` (Claude native) | `~/.claude/plugins/cache/<plugin>/<version>/skills` |
+| `~/.claude/plugins/cache` (Claude native) | `<plugin>@<registry>:<version>` |
 
 If a path does not exist, it is silently skipped.
 
-**Claude native grouping:** Each plugin/version combination gets its own source group (e.g. `~/.claude/plugins/cache/superpowers/5.0.1/skills`). This replaces the previous single `claude-native` label and results in one group per installed plugin in the `maestron skills` output.
+**Claude native grouping:** The plugins cache has the structure `~/.claude/plugins/cache/<registry>/<plugin>/<version>/skills`. Each plugin/version combination gets its own source group using the human-readable label `<plugin>@<registry>:<version>` (e.g. `superpowers@claude-plugins-official:5.0.1`). This replaces the previous single `claude-native` label. The label is derived by parsing the path components relative to the cache root — it is not a tilde-substituted path.
 
 ### Workspace paths
 
@@ -118,12 +118,12 @@ All source labels are tilde-substituted absolute paths of the skills root direct
 
 - `~/.claude/skills` — all global Claude skills
 - `~/.codex/skills` — all global Codex skills
-- `~/.claude/plugins/cache/superpowers/5.0.1/skills` — skills from a specific Claude plugin
+- `superpowers@claude-plugins-official:5.0.1` — skills from a specific Claude plugin
 - `/Users/scott/src/project/.codex/skills` — workspace skills where workspace is outside home
 
 **Tilde substitution:** replace the home directory prefix (e.g. `/Users/scott`) with `~`. If the path does not begin with the home directory, use the absolute path as-is.
 
-The `--source` filter on `maestron skills` uses `strings.Contains`, which works naturally against these path-based labels (e.g. `--source codex`, `--source claude`, `--source superpowers`).
+The `--source` filter on `maestron skills` uses `strings.Contains`, which works naturally against these labels (e.g. `--source codex`, `--source claude`, `--source superpowers`).
 
 ---
 
@@ -137,6 +137,7 @@ The `--source` filter on `maestron skills` uses `strings.Contains`, which works 
 - Add `walkWorkspaceSkills(root, home string, cache *SkillCache) []SkillInfo`
 - Add `skillsAncestor(filePath, root string) string` — walks up from `filePath`'s parent to `root`, returns the full absolute path of the nearest ancestor whose name contains `"skills"`, or `""` if none found
 - Add `tildeSubst(path, home string) string` — replaces home prefix with `~`
+- Add `claudePluginLabel(skillsDir, cacheRoot string) string` — parses `<cacheRoot>/<registry>/<plugin>/<version>/skills` to produce `<plugin>@<registry>:<version>`; falls back to tilde-substituted path if structure doesn't match
 
 ### `internal/discover/skills_cache.go` (new file)
 
