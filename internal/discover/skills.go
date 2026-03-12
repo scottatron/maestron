@@ -215,6 +215,51 @@ func walkSkillsDir(dir, source string, cache *SkillCache) []SkillInfo {
 	return skills
 }
 
+// walkGlobalSkills discovers skills from all standard global paths and the
+// Claude plugins cache. Global paths are searched in a fixed priority order.
+func walkGlobalSkills(home string, cache *SkillCache) []SkillInfo {
+	var skills []SkillInfo
+
+	standardPaths := []string{
+		filepath.Join(home, ".agents", "skills"),
+		filepath.Join(home, ".claude", "skills"),
+		filepath.Join(home, ".codex", "skills"),
+		filepath.Join(home, ".copilot", "skills"),
+		filepath.Join(home, ".github", "skills"),
+	}
+	for _, p := range standardPaths {
+		source := tildeSubst(p, home)
+		skills = append(skills, walkSkillsDir(p, source, cache)...)
+	}
+
+	cacheRoot := filepath.Join(home, ".claude", "plugins", "cache")
+	skills = append(skills, walkClaudePlugins(cacheRoot, home, cache)...)
+
+	return skills
+}
+
+// walkClaudePlugins walks the Claude plugins cache directory and discovers
+// SKILL.md files, using claudePluginLabel to derive human-readable source labels.
+func walkClaudePlugins(cacheRoot, home string, cache *SkillCache) []SkillInfo {
+	var skills []SkillInfo
+	filepath.Walk(cacheRoot, func(path string, info os.FileInfo, err error) error { //nolint:errcheck
+		if err != nil || info.IsDir() || info.Name() != "SKILL.md" {
+			return nil
+		}
+		ancestor := skillsAncestor(path, cacheRoot)
+		if ancestor == "" {
+			return nil
+		}
+		source := claudePluginLabel(ancestor, cacheRoot, home)
+		skill, err := loadSkillCached(path, source, cache)
+		if err == nil {
+			skills = append(skills, skill)
+		}
+		return nil
+	})
+	return skills
+}
+
 func parseSkillFrontmatter(data []byte) (*skillFrontmatter, error) {
 	if !bytes.HasPrefix(data, []byte("---")) {
 		return &skillFrontmatter{}, nil
