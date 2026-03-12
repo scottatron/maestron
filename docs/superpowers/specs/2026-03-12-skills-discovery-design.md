@@ -25,11 +25,11 @@ Skills discovery in `internal/discover/skills.go` uses hardcoded, fixed-depth se
 
 ### Order
 
-Global paths are searched first; workspace paths follow. This means global skills appear before workspace skills in `maestron skills` output.
+**Global paths are searched first; workspace paths follow.** This is intentional: global skills represent the user's personal library, which should appear prominently and have first-match priority in deduplication over workspace-specific skills.
 
 ### Global paths
 
-Each of the following directories is walked recursively. Every `SKILL.md` found anywhere beneath a path gets that path as its source label (tilde-substituted).
+Each of the following directories is walked recursively. Every `SKILL.md` found anywhere beneath a given path gets that path's tilde-substituted form as its source label — so all skills under `~/.claude/skills/**` share the source `~/.claude/skills`.
 
 | Directory | Source label |
 |---|---|
@@ -38,34 +38,42 @@ Each of the following directories is walked recursively. Every `SKILL.md` found 
 | `~/.codex/skills` | `~/.codex/skills` |
 | `~/.copilot/skills` | `~/.copilot/skills` |
 | `~/.github/skills` | `~/.github/skills` |
-| `~/.claude/plugins/cache` (existing Claude native walk) | `~/.claude/plugins/cache/<plugin>/<version>/skills` |
+| `~/.claude/plugins/cache` (Claude native) | `~/.claude/plugins/cache/<plugin>/<version>/skills` |
 
 If a path does not exist, it is silently skipped.
+
+**Claude native grouping:** Each plugin/version combination gets its own source group (e.g. `~/.claude/plugins/cache/superpowers/5.0.1/skills`). This replaces the previous single `claude-native` label and results in one group per installed plugin in the `maestron skills` output.
 
 ### Workspace paths
 
 If a workspace root is found (via `agents.FindAgentsConfig()`), walk from that root recursively. For each `SKILL.md` encountered:
 
 1. Walk up from the skill file's parent directory toward the workspace root
-2. Find the nearest ancestor directory whose name contains `"skills"` (case-insensitive)
-3. Use that ancestor's absolute path, tilde-substituted, as the source label
+2. Find the nearest ancestor directory whose name contains `"skills"` (case-insensitive substring match)
+3. Use that ancestor's full absolute path, tilde-substituted, as the source label
 4. If no such ancestor exists within the workspace root, skip the file
+
+The `skillsAncestor` function returns the **full absolute path** of the matching ancestor directory (not just its name). This becomes the source label after tilde substitution.
 
 Examples:
 
 | File path (relative to workspace) | Source label |
 |---|---|
-| `.codex/skills/foo/SKILL.md` | `.codex/skills` (tilde-subst if applicable) |
+| `.codex/skills/foo/SKILL.md` | `<workspace>/.codex/skills` |
 | `skills/bar/SKILL.md` | `<workspace>/skills` |
 | `agent-skills/baz/SKILL.md` | `<workspace>/agent-skills` |
-| `.codex/skills/category/foo/SKILL.md` | `.codex/skills` |
+| `.codex/skills/category/foo/SKILL.md` | `<workspace>/.codex/skills` |
 | `src/util.go` | skipped (no `*skills*` ancestor) |
 
-Workspace paths that are already covered by a global path (same absolute path) are still included — deduplication by `name+source` handles overlaps.
+**Workspace/global overlap:** If the workspace root happens to contain directories that are also global paths (e.g. a project rooted at `~`), those directories will produce different source labels in the workspace walk than in the global walk (different paths). This means they can appear twice under different groups. This is an acceptable edge case unlikely to occur in practice; no special handling is needed.
+
+### Source re-derivation
+
+Source labels are always re-derived during each walk. The cache stores source for reference only; the source field in the cache is not used to populate `SkillInfo.Source` — the walking logic derives it fresh each run. This avoids stale sources when the workspace root changes between invocations.
 
 ### Deduplication
 
-Deduplication is retained: skills with the same `name+source` keep the first occurrence. This is unchanged from current behaviour.
+Deduplication by `name+source` is retained: skills with the same name and source keep the first occurrence. With path-based source labels, two skills at different filesystem locations always have distinct sources and are never deduplicated against each other.
 
 ---
 
@@ -80,10 +88,12 @@ Deduplication is retained: skills with the same `name+source` keep the first occ
 Always re-walk all directories (so new and deleted skills are detected on every run). For each `SKILL.md` found:
 
 - Compute `sha256` of its content
-- If the absolute path exists in the cache **and** the hash matches → use cached `name`, `description`, `source`; skip frontmatter parsing
+- If the absolute path exists in the cache **and** the hash matches → use cached `name` and `description`; skip frontmatter parsing
 - If hash differs or path is new → parse frontmatter, update cache entry
 - After the walk, remove cache entries whose paths were not encountered (deleted skills)
 - Write the updated cache back to disk
+
+The cache provides `name` and `description` only. Source is always computed by the walk, not read from cache.
 
 ### Cache format
 
@@ -94,29 +104,26 @@ Always re-walk all directories (so new and deleted skills are detected on every 
     "/abs/path/to/SKILL.md": {
       "hash": "sha256:<hex>",
       "name": "skill-name",
-      "description": "One-line description",
-      "source": "~/.claude/skills"
+      "description": "One-line description"
     }
   }
 }
 ```
 
-`source` is stored as the tilde-substituted path so the cache can be used directly without re-deriving it.
-
 ---
 
 ## Source labels
 
-All source labels are the tilde-substituted absolute path of the skills root directory:
+All source labels are tilde-substituted absolute paths of the skills root directory:
 
-- `~/.claude/skills` for global Claude skills
-- `~/.codex/skills` for global Codex skills
-- `~/.claude/plugins/cache/superpowers/5.0.1/skills` for a Claude native plugin
-- `/Users/scott/src/project/.codex/skills` for workspace skills under a workspace not inside home
+- `~/.claude/skills` — all global Claude skills
+- `~/.codex/skills` — all global Codex skills
+- `~/.claude/plugins/cache/superpowers/5.0.1/skills` — skills from a specific Claude plugin
+- `/Users/scott/src/project/.codex/skills` — workspace skills where workspace is outside home
 
-Tilde substitution: replace the home directory prefix with `~` when building the source label. If the path is not under the home directory, use the absolute path as-is.
+**Tilde substitution:** replace the home directory prefix (e.g. `/Users/scott`) with `~`. If the path does not begin with the home directory, use the absolute path as-is.
 
-The `--source` filter on `maestron skills` remains a `strings.Contains` match, which works naturally against these path-based labels.
+The `--source` filter on `maestron skills` uses `strings.Contains`, which works naturally against these path-based labels (e.g. `--source codex`, `--source claude`, `--source superpowers`).
 
 ---
 
@@ -125,10 +132,10 @@ The `--source` filter on `maestron skills` remains a `strings.Contains` match, w
 ### `internal/discover/skills.go`
 
 - Replace `ListSkills()` with updated implementation calling `walkGlobalSkills()` and `walkWorkspaceSkills()`
-- Remove `discoverSkillsDir()` (fixed-path, one-level) and `discoverClaudeNativeSkills()` (replaced by recursive walk)
+- Remove `discoverSkillsDir()` (fixed-path, one-level) and `discoverClaudeNativeSkills()` (replaced by recursive global walk)
 - Add `walkGlobalSkills(home string, cache *SkillCache) []SkillInfo`
 - Add `walkWorkspaceSkills(root, home string, cache *SkillCache) []SkillInfo`
-- Add `skillsAncestor(path, root string) string` — walks up to find `*skills*` ancestor, returns its path or `""`
+- Add `skillsAncestor(filePath, root string) string` — walks up from `filePath`'s parent to `root`, returns the full absolute path of the nearest ancestor whose name contains `"skills"`, or `""` if none found
 - Add `tildeSubst(path, home string) string` — replaces home prefix with `~`
 
 ### `internal/discover/skills_cache.go` (new file)
@@ -138,7 +145,6 @@ type CacheEntry struct {
     Hash        string `json:"hash"`
     Name        string `json:"name"`
     Description string `json:"description"`
-    Source      string `json:"source"`
 }
 
 type SkillCache struct {
@@ -147,22 +153,40 @@ type SkillCache struct {
     touched map[string]bool        // not serialised
 }
 
-func LoadCache() (*SkillCache, error)
-func (c *SkillCache) Save() error
-func (c *SkillCache) Lookup(absPath string, hash string) (CacheEntry, bool)
+func LoadCache(home string) (*SkillCache, error)
+func (c *SkillCache) Save(home string) error
+func (c *SkillCache) Lookup(absPath, hash string) (CacheEntry, bool)
 func (c *SkillCache) Set(absPath string, entry CacheEntry)
 func (c *SkillCache) Prune() // removes entries not touched during current walk
 ```
 
-Cache file path: `~/.agents/maestron/skills.json` via `platform.HomeDir()`.
+`LoadCache` and `Save` accept `home string` (the resolved home directory) to avoid a second independent call to `platform.HomeDir()`.
 
 ### `internal/discover/types.go`
 
-No structural changes. `SkillInfo.Source` remains a `string`; it will now hold a tilde-substituted path instead of a synthetic label.
+No structural changes. `SkillInfo.Source` remains a `string`; it now holds a tilde-substituted path.
 
 ### `cmd/skills.go`
 
-No changes required. Grouping by source in `renderSkillsGrouped` already uses `SkillInfo.Source` as the group key — path-based labels will group correctly.
+Update the `--source` flag help text from the current hardcoded examples to reflect path-based filtering:
+
+```go
+skillsCmd.Flags().StringVar(&skillsSource, "source", "", `filter by source path (e.g. "claude", "codex", "superpowers")`)
+```
+
+No other changes required. Grouping by source in `renderSkillsGrouped` uses `SkillInfo.Source` as the group key and works correctly with path-based labels.
+
+---
+
+## Testing
+
+Add or update unit tests covering:
+
+- `tildeSubst`: path under home → tilde prefix; path not under home → unchanged
+- `skillsAncestor`: nested skill file finds correct `*skills*` ancestor; file with no `*skills*` ancestor returns `""`; file at workspace root boundary is handled
+- `SkillCache.Lookup`: cache hit with matching hash returns entry; cache miss on hash mismatch; unknown path returns false
+- `SkillCache.Prune`: untouched entries are removed; touched entries are retained
+- `walkGlobalSkills`: missing directories are silently skipped; recursive walk finds nested SKILL.md files
 
 ---
 
@@ -171,4 +195,4 @@ No changes required. Grouping by source in `renderSkillsGrouped` already uses `S
 - No configuration file for search paths
 - No opt-in/opt-out per directory
 - No watching for changes (always re-walk)
-- No change to `SkillInfo` fields or the `--source` flag behaviour
+- No change to `SkillInfo` fields
