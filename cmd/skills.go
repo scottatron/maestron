@@ -234,7 +234,11 @@ func renderSkillsPlain(skills []discover.SkillInfo) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(w, "NAME\tDESCRIPTION\tSOURCE")
 	for _, s := range skills {
-		fmt.Fprintf(w, "%s\t%s\t%s\n", s.Name, s.Description, s.Source)
+		desc := strings.ReplaceAll(s.Description, "\n", " ")
+		desc = strings.ReplaceAll(desc, "\t", " ")
+		source := strings.ReplaceAll(s.Source, "\n", " ")
+		source = strings.ReplaceAll(source, "\t", " ")
+		fmt.Fprintf(w, "%s\t%s\t%s\n", s.Name, desc, source)
 	}
 	w.Flush()
 }

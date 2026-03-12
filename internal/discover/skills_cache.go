@@ -34,7 +34,8 @@ func cachePath(home string) string {
 }
 
 // LoadCache reads the cache from disk. Returns an empty cache if the file
-// does not exist. Returns an error only for unexpected read/parse failures.
+// does not exist or is corrupt/unparsable. Returns an error only for
+// unexpected read failures (e.g. permission denied).
 func LoadCache(home string) (*SkillCache, error) {
 	path := cachePath(home)
 	data, err := os.ReadFile(path)

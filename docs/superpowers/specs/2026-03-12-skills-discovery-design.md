@@ -69,7 +69,7 @@ Examples:
 
 ### Source re-derivation
 
-Source labels are always re-derived during each walk. The cache stores source for reference only; the source field in the cache is not used to populate `SkillInfo.Source` — the walking logic derives it fresh each run. This avoids stale sources when the workspace root changes between invocations.
+Source labels are always re-derived during each walk; `SkillInfo.Source` is never loaded from the cache and is instead recomputed by the walking logic on each run. This avoids stale sources when the workspace root changes between invocations.
 
 ### Deduplication
 
@@ -137,7 +137,7 @@ The `--source` filter on `maestron skills` uses `strings.Contains`, which works 
 - Add `walkWorkspaceSkills(root, home string, cache *SkillCache) []SkillInfo`
 - Add `skillsAncestor(filePath, root string) string` — walks up from `filePath`'s parent to `root`, returns the full absolute path of the nearest ancestor whose name contains `"skills"`, or `""` if none found
 - Add `tildeSubst(path, home string) string` — replaces home prefix with `~`
-- Add `claudePluginLabel(skillsDir, cacheRoot string) string` — parses `<cacheRoot>/<registry>/<plugin>/<version>/skills` to produce `<plugin>@<registry>:<version>`; falls back to tilde-substituted path if structure doesn't match
+- Add `claudePluginLabel(skillsDir, cacheRoot, home string) string` — parses `<cacheRoot>/<registry>/<plugin>/<version>/skills` to produce `<plugin>@<registry>:<version>`; falls back to tilde-substituted path using `home` if structure doesn't match
 
 ### `internal/discover/skills_cache.go` (new file)
 
