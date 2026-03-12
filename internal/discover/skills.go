@@ -2,6 +2,8 @@ package discover
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,6 +155,64 @@ func loadSkillFromPath(path, source string) (SkillInfo, error) {
 		Source:      source,
 		Path:        path,
 	}, nil
+}
+
+// loadSkillCached reads a SKILL.md file, using the cache to skip frontmatter
+// parsing when the content hash matches. The source label is always provided
+// by the caller (never read from cache).
+func loadSkillCached(path, source string, cache *SkillCache) (SkillInfo, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return SkillInfo{}, err
+	}
+
+	sum := sha256.Sum256(data)
+	hash := fmt.Sprintf("sha256:%x", sum)
+
+	if entry, ok := cache.Lookup(path, hash); ok {
+		return SkillInfo{
+			Name:        entry.Name,
+			Description: entry.Description,
+			Source:      source,
+			Path:        path,
+		}, nil
+	}
+
+	// Cache miss: parse frontmatter
+	fm, _ := parseSkillFrontmatter(data)
+	name := filepath.Base(filepath.Dir(path))
+	desc := ""
+	if fm != nil {
+		if fm.Name != "" {
+			name = fm.Name
+		}
+		desc = fm.Description
+	}
+
+	cache.Set(path, CacheEntry{Hash: hash, Name: name, Description: desc})
+	return SkillInfo{
+		Name:        name,
+		Description: desc,
+		Source:      source,
+		Path:        path,
+	}, nil
+}
+
+// walkSkillsDir recursively walks dir for SKILL.md files, assigning source
+// as the source label for all skills found. Silently skips missing dirs.
+func walkSkillsDir(dir, source string, cache *SkillCache) []SkillInfo {
+	var skills []SkillInfo
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error { //nolint:errcheck
+		if err != nil || info.IsDir() || info.Name() != "SKILL.md" {
+			return nil
+		}
+		skill, err := loadSkillCached(path, source, cache)
+		if err == nil {
+			skills = append(skills, skill)
+		}
+		return nil
+	})
+	return skills
 }
 
 func parseSkillFrontmatter(data []byte) (*skillFrontmatter, error) {
