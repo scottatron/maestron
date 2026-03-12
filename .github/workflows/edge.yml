@@ -34,15 +34,36 @@ jobs:
         run: |
           # Find the latest stable release tag (exact semver, no pre-release suffix)
           LATEST=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-          if [ -z "$LATEST" ]; then
-            EDGE_TAG="v0.0.1-edge"
+          RANGE="${LATEST:+${LATEST}..HEAD}"
+
+          # Infer bump level from conventional commits since last release:
+          #   breaking change (! or BREAKING CHANGE) → major
+          #   feat                                   → minor
+          #   anything else                          → patch
+          if git log ${RANGE:-HEAD} --pretty=format:"%s%n%b" \
+              | grep -qE '^(feat|fix|refactor|perf|chore|docs|ci|test|style)(\(.+\))?!:|^BREAKING CHANGE:'; then
+            BUMP="major"
+          elif git log ${RANGE:-HEAD} --pretty=format:"%s" \
+              | grep -qE '^feat(\(.+\))?:'; then
+            BUMP="minor"
           else
-            # Bump patch and append -edge: v0.4.2 → v0.4.3-edge
-            IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
-            EDGE_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))-edge"
+            BUMP="patch"
           fi
+
+          if [ -z "$LATEST" ]; then
+            EDGE_TAG="v0.1.0-edge"
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+            case "$BUMP" in
+              major) EDGE_TAG="v$((MAJOR + 1)).0.0-edge" ;;
+              minor) EDGE_TAG="v${MAJOR}.$((MINOR + 1)).0-edge" ;;
+              patch) EDGE_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))-edge" ;;
+            esac
+          fi
+
           echo "edge_tag=${EDGE_TAG}" >> "$GITHUB_OUTPUT"
           echo "prev_tag=${LATEST}" >> "$GITHUB_OUTPUT"
+          echo "bump=${BUMP}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
         if: steps.check.outputs.skip == 'false'
@@ -80,7 +101,9 @@ jobs:
           FIXES=$(git log ${RANGE:-HEAD}    --pretty=format:"- %s (%h)" | grep -iE '^- fix(\(.+\))?[^!]:' || true)
           OTHERS=$(git log ${RANGE:-HEAD}   --pretty=format:"- %s (%h)" | grep -viE '^- (feat|fix|chore|docs|ci|test|style|refactor|perf)(\(.+\))?[!:]' || true)
 
-          BODY="Rolling pre-release built from \`main\` — updates automatically on every push.\n\n"
+          BUMP="${{ steps.tag.outputs.bump }}"
+          BODY="Rolling pre-release built from \`main\` — updates automatically on every push.\n"
+          BODY="${BODY}Inferred next release: **${BUMP} bump** → \`${{ steps.tag.outputs.edge_tag }}\`\n\n"
           [ -n "$FEATURES" ] && BODY="${BODY}## Features\n${FEATURES}\n\n"
           [ -n "$FIXES" ]    && BODY="${BODY}## Bug Fixes\n${FIXES}\n\n"
           [ -n "$OTHERS" ]   && BODY="${BODY}## Other Changes\n${OTHERS}\n\n"
