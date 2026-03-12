@@ -174,7 +174,7 @@ func renderManagedMeta(r *manage.SkillRecord) string {
 
 	var parts []string
 	if r.Source.Type == "git" {
-		parts = append(parts, kv("source", "git"))
+		parts = append(parts, kv("source", stripURLScheme(r.Source.URL)))
 		if r.Source.Ref != "" {
 			parts = append(parts, kv("ref", r.Source.Ref))
 		}
@@ -182,10 +182,11 @@ func renderManagedMeta(r *manage.SkillRecord) string {
 			parts = append(parts, kv("sha", sha))
 		}
 	} else {
-		parts = append(parts, kv("source", "local"))
+		sourceVal := r.Source.Path
 		if r.Source.Hostname != "" {
-			parts = append(parts, kv("host", r.Source.Hostname))
+			sourceVal = r.Source.Hostname + ":" + r.Source.Path
 		}
+		parts = append(parts, kv("source", sourceVal))
 	}
 	parts = append(parts, kv("updated", r.UpdatedAt.Format("2006-01-02")))
 

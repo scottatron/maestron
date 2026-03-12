@@ -13,6 +13,15 @@ var (
 	styleDiffRemoved = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B91C1C", Dark: "#F87171"})
 )
 
+// stripURLScheme removes the scheme (e.g. "https://", "git://") from a URL,
+// returning just the host and path portion.
+func stripURLScheme(url string) string {
+	if i := strings.Index(url, "://"); i >= 0 {
+		return url[i+3:]
+	}
+	return url
+}
+
 // isLocalPath returns true if s looks like a local filesystem path.
 func isLocalPath(s string) bool {
 	if strings.HasPrefix(s, "/") || strings.HasPrefix(s, "./") || strings.HasPrefix(s, "~/") {
