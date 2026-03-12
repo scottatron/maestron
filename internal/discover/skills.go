@@ -203,7 +203,10 @@ func loadSkillCached(path, source string, cache *SkillCache) (SkillInfo, error) 
 func walkSkillsDir(dir, source string, cache *SkillCache) []SkillInfo {
 	var skills []SkillInfo
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error { //nolint:errcheck
-		if err != nil || info.IsDir() || info.Name() != "SKILL.md" {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() || info.Name() != "SKILL.md" {
 			return nil
 		}
 		skill, err := loadSkillCached(path, source, cache)
@@ -243,7 +246,10 @@ func walkGlobalSkills(home string, cache *SkillCache) []SkillInfo {
 func walkClaudePlugins(cacheRoot, home string, cache *SkillCache) []SkillInfo {
 	var skills []SkillInfo
 	filepath.Walk(cacheRoot, func(path string, info os.FileInfo, err error) error { //nolint:errcheck
-		if err != nil || info.IsDir() || info.Name() != "SKILL.md" {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() || info.Name() != "SKILL.md" {
 			return nil
 		}
 		ancestor := skillsAncestor(path, cacheRoot)
@@ -267,7 +273,10 @@ func walkClaudePlugins(cacheRoot, home string, cache *SkillCache) []SkillInfo {
 func walkWorkspaceSkills(root, home string, cache *SkillCache) []SkillInfo {
 	var skills []SkillInfo
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error { //nolint:errcheck
-		if err != nil || info.IsDir() || info.Name() != "SKILL.md" {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() || info.Name() != "SKILL.md" {
 			return nil
 		}
 		ancestor := skillsAncestor(path, root)
