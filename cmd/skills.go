@@ -3,14 +3,15 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
+	"text/tabwriter"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
 	"github.com/scottatron/maestron/internal/discover"
 	"github.com/scottatron/maestron/internal/output"
-	"github.com/scottatron/maestron/internal/platform"
 )
 
 var skillsSource string
@@ -22,7 +23,7 @@ var skillsCmd = &cobra.Command{
 }
 
 func init() {
-	skillsCmd.Flags().StringVar(&skillsSource, "source", "all", `filter by source: "project", "claude", or "all"`)
+	skillsCmd.Flags().StringVar(&skillsSource, "source", "", `filter by source (e.g. "project", "global", "claude", "codex")`)
 }
 
 func runSkills(cmd *cobra.Command, args []string) error {
@@ -31,19 +32,11 @@ func runSkills(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Apply source filter
-	if skillsSource != "all" && skillsSource != "" {
+	if skillsSource != "" {
 		var filtered []discover.SkillInfo
 		for _, s := range skills {
-			switch skillsSource {
-			case "project":
-				if s.Source == "project" {
-					filtered = append(filtered, s)
-				}
-			case "claude":
-				if s.Source == "claude-native" {
-					filtered = append(filtered, s)
-				}
+			if strings.Contains(s.Source, skillsSource) {
+				filtered = append(filtered, s)
 			}
 		}
 		skills = filtered
@@ -60,37 +53,91 @@ func renderSkillsTable(skills []discover.SkillInfo) {
 		fmt.Println("No skills found.")
 		return
 	}
-	t := output.NewTable(os.Stdout, []string{"NAME", "DESCRIPTION", "SOURCE"})
-	for _, s := range skills {
-		desc := s.Description
-		if len(desc) > 60 {
-			desc = desc[:57] + "..."
-		}
-		t.Row(s.Name, desc, formatSkillSource(s.Path))
+
+	if !term.IsTerminal(os.Stdout.Fd()) {
+		renderSkillsPlain(skills)
+		return
 	}
-	t.Flush()
+
+	renderSkillsGrouped(skills, ttyWidth())
 }
 
-// formatSkillSource returns a short human-readable source label for a skill path:
-//   - ~/.agents/skills/foo/SKILL.md        → ~/.agents/skills/foo
-//   - {cacheDir}/registry/plugin/ver/...   → plugin@registry
-//   - anything else                        → tilde-abbreviated parent dir
-func formatSkillSource(path string) string {
-	home, _ := platform.HomeDir()
+func renderSkillsGrouped(skills []discover.SkillInfo, width int) {
+	// Calculate name column width from the widest name, capped at 40.
+	maxName := 0
+	for _, s := range skills {
+		if n := len(s.Name); n > maxName {
+			maxName = n
+		}
+	}
+	if maxName > 40 {
+		maxName = 40
+	}
 
-	// Claude plugin cache: {home}/.claude/plugins/cache/{registry}/{plugin}/{version}/skills/...
-	if home != "" {
-		cacheDir := filepath.Join(home, ".claude", "plugins", "cache")
-		if strings.HasPrefix(path, cacheDir+string(filepath.Separator)) {
-			rel := path[len(cacheDir)+1:]
-			parts := strings.SplitN(rel, string(filepath.Separator), 3)
-			if len(parts) >= 2 {
-				registry, plugin := parts[0], parts[1]
-				return plugin + "@" + registry
-			}
+	// Description fills the remaining width: indent(2) + name + gap(2).
+	const indent = 2
+	const gap = 2
+	descWidth := width - indent - maxName - gap
+	if descWidth < 20 {
+		descWidth = 20
+	}
+
+	// Collect groups in order of first appearance.
+	type group struct {
+		source string
+		skills []discover.SkillInfo
+	}
+	var groups []group
+	index := map[string]int{}
+	for _, s := range skills {
+		if i, ok := index[s.Source]; ok {
+			groups[i].skills = append(groups[i].skills, s)
+		} else {
+			index[s.Source] = len(groups)
+			groups = append(groups, group{source: s.Source, skills: []discover.SkillInfo{s}})
 		}
 	}
 
-	// For everything else: show the skill's parent directory (tilde-abbreviated)
-	return tildeAbbrev(filepath.Dir(path))
+	for i, g := range groups {
+		if i > 0 {
+			fmt.Println()
+		}
+		count := fmt.Sprintf("(%d)", len(g.skills))
+		fmt.Printf("%s %s\n", g.source, count)
+		for _, s := range g.skills {
+			desc := truncateRunes(s.Description, descWidth)
+			fmt.Printf("  %-*s  %s\n", maxName, s.Name, desc)
+		}
+	}
+}
+
+func renderSkillsPlain(skills []discover.SkillInfo) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "NAME\tDESCRIPTION\tSOURCE")
+	for _, s := range skills {
+		fmt.Fprintf(w, "%s\t%s\t%s\n", s.Name, s.Description, s.Source)
+	}
+	w.Flush()
+}
+
+// ttyWidth returns the terminal width, falling back to $COLUMNS then 120.
+func ttyWidth() int {
+	if w, _, err := term.GetSize(os.Stdout.Fd()); err == nil && w > 0 {
+		return w
+	}
+	if cols := os.Getenv("COLUMNS"); cols != "" {
+		if n, err := strconv.Atoi(cols); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 120
+}
+
+func truncateRunes(s string, max int) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max-1]) + "…"
 }

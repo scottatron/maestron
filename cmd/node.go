@@ -94,5 +94,4 @@ func init() {
 	nodeCmd.AddCommand(nodeStatusCmd)
 	nodeCmd.AddCommand(agentsCmd)
 	nodeCmd.AddCommand(sessionsCmd)
-	nodeCmd.AddCommand(skillsCmd)
 }

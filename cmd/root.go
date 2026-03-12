@@ -40,6 +40,7 @@ func init() {
 
 	rootCmd.AddCommand(workspaceCmd)
 	rootCmd.AddCommand(nodeCmd)
+	rootCmd.AddCommand(skillsCmd)
 
 	RegisterLaunchCommands(rootCmd)
 }
