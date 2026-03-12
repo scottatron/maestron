@@ -9,7 +9,10 @@ import (
 	"github.com/scottatron/maestron/internal/platform"
 )
 
-var updateAll bool
+var (
+	updateAll   bool
+	updateCheck bool
+)
 
 var skillsUpdateCmd = &cobra.Command{
 	Use:   "update [name]",
@@ -19,6 +22,7 @@ var skillsUpdateCmd = &cobra.Command{
 
 func init() {
 	skillsUpdateCmd.Flags().BoolVar(&updateAll, "all", false, "update all managed skills")
+	skillsUpdateCmd.Flags().BoolVar(&updateCheck, "check", false, "check for updates without applying them (makes network calls)")
 	skillsCmd.AddCommand(skillsUpdateCmd)
 }
 
@@ -33,17 +37,21 @@ func runSkillsUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load manifest: %w", err)
 	}
 
-	if len(args) == 0 && !updateAll {
-		return fmt.Errorf("specify a skill name or use --all to update all skills")
+	if len(args) == 0 && !updateAll && !updateCheck {
+		return fmt.Errorf("specify a skill name, use --all, or use --check to check all skills")
 	}
 
 	var names []string
-	if updateAll {
+	if updateAll || updateCheck {
 		for name := range manifest.Skills {
 			names = append(names, name)
 		}
 	} else {
 		names = []string{args[0]}
+	}
+
+	if updateCheck {
+		return runSkillsUpdateCheck(names, manifest)
 	}
 
 	var lastErr error
@@ -84,6 +92,33 @@ func runSkillsUpdate(cmd *cobra.Command, args []string) error {
 
 	if err := manifest.Save(home); err != nil {
 		return fmt.Errorf("save manifest: %w", err)
+	}
+	return lastErr
+}
+
+func runSkillsUpdateCheck(names []string, manifest *manage.SkillsManifest) error {
+	var lastErr error
+	for _, name := range names {
+		record, ok := manifest.Skills[name]
+		if !ok {
+			fmt.Printf("✗ %s: not found in manifest\n", name)
+			continue
+		}
+		us := manage.CheckUpdate(record)
+		if us.Err != nil {
+			fmt.Printf("✗ %s: %v\n", name, us.Err)
+			lastErr = us.Err
+			continue
+		}
+		if us.HasUpdate {
+			if us.RemoteSHA != "" {
+				fmt.Printf("↑ %s: update available (%s → %s)\n", name, shortSHA(record.Source.ResolvedSHA), shortSHA(us.RemoteSHA))
+			} else {
+				fmt.Printf("↑ %s: update available\n", name)
+			}
+		} else {
+			fmt.Printf("✓ %s: up to date\n", name)
+		}
 	}
 	return lastErr
 }
