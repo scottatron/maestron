@@ -7,11 +7,19 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
 	"github.com/scottatron/maestron/internal/discover"
 	"github.com/scottatron/maestron/internal/output"
+)
+
+var (
+	styleSource = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "#5B21B6", Dark: "#A78BFA"})
+	styleCount  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#6B7280"})
+	styleName   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#111827", Dark: "#F9FAFB"})
+	styleDesc   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"})
 )
 
 var skillsSource string
@@ -102,11 +110,12 @@ func renderSkillsGrouped(skills []discover.SkillInfo, width int) {
 		if i > 0 {
 			fmt.Println()
 		}
-		count := fmt.Sprintf("(%d)", len(g.skills))
-		fmt.Printf("%s %s\n", g.source, count)
+		count := styleCount.Render(fmt.Sprintf("(%d)", len(g.skills)))
+		fmt.Printf("%s %s\n", styleSource.Render(g.source), count)
 		for _, s := range g.skills {
 			desc := truncateRunes(s.Description, descWidth)
-			fmt.Printf("  %-*s  %s\n", maxName, s.Name, desc)
+			name := styleName.Render(fmt.Sprintf("%-*s", maxName, s.Name))
+			fmt.Printf("  %s  %s\n", name, styleDesc.Render(desc))
 		}
 	}
 }
