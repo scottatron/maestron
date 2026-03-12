@@ -2,6 +2,7 @@
 package discover
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -77,5 +78,78 @@ func TestClaudePluginLabel(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("claudePluginLabel(%q) = %q, want %q", tt.skillsDir, got, tt.want)
 		}
+	}
+}
+
+func TestWalkGlobalSkills_MissingDirs(t *testing.T) {
+	home := t.TempDir() // empty home — no skills dirs exist
+	cache := newCache()
+	skills := walkGlobalSkills(home, cache)
+	if len(skills) != 0 {
+		t.Errorf("expected 0 skills from empty home, got %d", len(skills))
+	}
+}
+
+func TestWalkGlobalSkills_NestedSkill(t *testing.T) {
+	home := t.TempDir()
+	// Create ~/.claude/skills/my-skill/SKILL.md
+	skillDir := filepath.Join(home, ".claude", "skills", "my-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: my-skill\ndescription: A test skill\n---\n# My Skill\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cache := newCache()
+	skills := walkGlobalSkills(home, cache)
+
+	if len(skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(skills))
+	}
+	if skills[0].Name != "my-skill" {
+		t.Errorf("name = %q, want %q", skills[0].Name, "my-skill")
+	}
+	if skills[0].Source != "~/.claude/skills" {
+		t.Errorf("source = %q, want %q", skills[0].Source, "~/.claude/skills")
+	}
+}
+
+func TestWalkWorkspaceSkills_AncestorGrouping(t *testing.T) {
+	root := t.TempDir()
+	home := t.TempDir()
+
+	// Create .codex/skills/foo/SKILL.md and agent-skills/bar/SKILL.md
+	for _, rel := range []string{
+		filepath.Join(".codex", "skills", "foo", "SKILL.md"),
+		filepath.Join("agent-skills", "bar", "SKILL.md"),
+		filepath.Join("src", "util", "SKILL.md"), // should be skipped — no "skills" ancestor
+	} {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("# skill"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cache := newCache()
+	skills := walkWorkspaceSkills(root, home, cache)
+
+	if len(skills) != 2 {
+		t.Fatalf("expected 2 skills, got %d: %v", len(skills), skills)
+	}
+	sources := map[string]bool{}
+	for _, s := range skills {
+		sources[s.Source] = true
+	}
+	// root is a temp dir not under home, so tildeSubst returns the absolute path
+	if !sources[filepath.Join(root, ".codex", "skills")] {
+		t.Errorf("expected .codex/skills source, got: %v", sources)
+	}
+	if !sources[filepath.Join(root, "agent-skills")] {
+		t.Errorf("expected agent-skills source, got: %v", sources)
 	}
 }

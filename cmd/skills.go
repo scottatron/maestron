@@ -23,7 +23,7 @@ var skillsCmd = &cobra.Command{
 }
 
 func init() {
-	skillsCmd.Flags().StringVar(&skillsSource, "source", "", `filter by source (e.g. "project", "global", "claude", "codex")`)
+	skillsCmd.Flags().StringVar(&skillsSource, "source", "", `filter by source path (e.g. "claude", "codex", "superpowers")`)
 }
 
 func runSkills(cmd *cobra.Command, args []string) error {
