@@ -57,20 +57,22 @@ func runSkills(cmd *cobra.Command, args []string) error {
 		skills = filtered
 	}
 
-	// Load managed skills manifest for inline annotations (best-effort).
+	// Load managed skills manifest and update cache for inline annotations (best-effort).
 	var manifest *manage.SkillsManifest
+	var updateCache *manage.UpdateCheckCache
 	home, _ := platform.HomeDir()
 	if home != "" {
 		manifest, _ = manage.LoadManifest(home)
+		updateCache, _ = manage.LoadUpdateCache(home)
 	}
 
 	output.Print(skills, func() {
-		renderSkillsTable(skills, manifest, home)
+		renderSkillsTable(skills, manifest, updateCache, home)
 	})
 	return nil
 }
 
-func renderSkillsTable(skills []discover.SkillInfo, manifest *manage.SkillsManifest, home string) {
+func renderSkillsTable(skills []discover.SkillInfo, manifest *manage.SkillsManifest, updateCache *manage.UpdateCheckCache, home string) {
 	if len(skills) == 0 {
 		fmt.Println("No skills found.")
 		return
@@ -81,7 +83,7 @@ func renderSkillsTable(skills []discover.SkillInfo, manifest *manage.SkillsManif
 		return
 	}
 
-	renderSkillsGrouped(skills, manifest, home, ttyWidth())
+	renderSkillsGrouped(skills, manifest, updateCache, home, ttyWidth())
 }
 
 // metaLayout holds the pre-computed column widths for aligned metadata rendering.
@@ -133,7 +135,7 @@ func managedSourceVal(r *manage.SkillRecord, home string) string {
 	return srcPath
 }
 
-func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsManifest, home string, width int) {
+func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsManifest, updateCache *manage.UpdateCheckCache, home string, width int) {
 	// Calculate name column width from the widest name, capped at 40.
 	maxName := 0
 	for _, s := range skills {
@@ -198,7 +200,11 @@ func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsMan
 			switch {
 			case s.ManagedRelation == discover.ManagedRelationIs && record != nil:
 				// This IS the managed copy — show its full metadata.
-				fmt.Printf("  %s  %s\n", pad, renderManagedMeta(record, home, layout))
+				var uce *manage.UpdateCheckEntry
+				if updateCache != nil {
+					uce = updateCache.Skills[s.Name]
+				}
+				fmt.Printf("  %s  %s\n", pad, renderManagedMeta(record, home, layout, uce))
 
 			case isSource:
 				// This path is where the managed copy was installed from.
@@ -248,7 +254,8 @@ func ttyWidth() int {
 
 // renderManagedMeta formats the managed-skill metadata as inline key: value pairs,
 // padding each column to the widths in layout so fields align across all skills.
-func renderManagedMeta(r *manage.SkillRecord, home string, layout metaLayout) string {
+// uce is the cached update check result for this skill (may be nil).
+func renderManagedMeta(r *manage.SkillRecord, home string, layout metaLayout, uce *manage.UpdateCheckEntry) string {
 	kv := func(key, val string) string {
 		return styleManagedKey.Render(key+":") + " " + styleManagedVal.Render(val)
 	}
@@ -282,6 +289,21 @@ func renderManagedMeta(r *manage.SkillRecord, home string, layout metaLayout) st
 	}
 
 	parts = append(parts, kv("updated", r.UpdatedAt.Format("2006-01-02")))
+
+	// Append cached update status if present.
+	if uce != nil {
+		if uce.ErrMsg != "" {
+			parts = append(parts, styleConflict.Render("⚠ check error"))
+		} else if uce.HasUpdate {
+			indicator := "↑ update available"
+			if uce.RemoteSHA != "" && r.Source.ResolvedSHA != "" {
+				indicator = fmt.Sprintf("↑ update available (%s → %s)", shortSHA(r.Source.ResolvedSHA), shortSHA(uce.RemoteSHA))
+			}
+			parts = append(parts, styleConflict.Render(indicator))
+		} else {
+			parts = append(parts, styleAlias.Render("✓ up to date"))
+		}
+	}
 
 	return strings.Join(parts, "  ")
 }

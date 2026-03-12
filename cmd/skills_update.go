@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -97,6 +98,13 @@ func runSkillsUpdate(cmd *cobra.Command, args []string) error {
 }
 
 func runSkillsUpdateCheck(names []string, manifest *manage.SkillsManifest) error {
+	home, err := platform.HomeDir()
+	if err != nil {
+		return err
+	}
+
+	cache, _ := manage.LoadUpdateCache(home) // best-effort
+
 	var lastErr error
 	for _, name := range names {
 		record, ok := manifest.Skills[name]
@@ -105,6 +113,17 @@ func runSkillsUpdateCheck(names []string, manifest *manage.SkillsManifest) error
 			continue
 		}
 		us := manage.CheckUpdate(record)
+
+		entry := &manage.UpdateCheckEntry{
+			HasUpdate: us.HasUpdate,
+			RemoteSHA: us.RemoteSHA,
+			CheckedAt: time.Now().UTC(),
+		}
+		if us.Err != nil {
+			entry.ErrMsg = us.Err.Error()
+		}
+		cache.Skills[name] = entry
+
 		if us.Err != nil {
 			fmt.Printf("✗ %s: %v\n", name, us.Err)
 			lastErr = us.Err
@@ -120,5 +139,8 @@ func runSkillsUpdateCheck(names []string, manifest *manage.SkillsManifest) error
 			fmt.Printf("✓ %s: up to date\n", name)
 		}
 	}
+
+	// Persist results (best-effort; don't mask the real error)
+	cache.Save(home) //nolint:errcheck
 	return lastErr
 }

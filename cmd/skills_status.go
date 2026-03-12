@@ -41,12 +41,18 @@ func runSkillsStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	updateCache, _ := manage.LoadUpdateCache(home) // best-effort
+
 	if len(args) > 0 {
 		record, ok := manifest.Skills[args[0]]
 		if !ok {
 			return fmt.Errorf("skill %q not found in manifest", args[0])
 		}
-		printSkillDetail(home, record, statusCheck)
+		var uce *manage.UpdateCheckEntry
+		if updateCache != nil {
+			uce = updateCache.Skills[args[0]]
+		}
+		printSkillDetail(home, record, statusCheck, uce)
 		return nil
 	}
 
@@ -56,7 +62,11 @@ func runSkillsStatus(cmd *cobra.Command, args []string) error {
 		sha := shortSHA(record.Source.ResolvedSHA) // empty for local
 		hash := shortContentHash(record.ContentHash)
 		updated := record.UpdatedAt.Format("2006-01-02")
-		status := statusForRecord(record, statusCheck)
+		var uce *manage.UpdateCheckEntry
+		if updateCache != nil {
+			uce = updateCache.Skills[record.Name]
+		}
+		status := statusForRecord(record, statusCheck, uce)
 		t.Row(record.Name, source, sha, hash, updated, status)
 	}
 	t.Flush()
@@ -87,7 +97,7 @@ func shortContentHash(hash string) string {
 	return hash
 }
 
-func statusForRecord(record *manage.SkillRecord, check bool) string {
+func statusForRecord(record *manage.SkillRecord, check bool, uce *manage.UpdateCheckEntry) string {
 	if check {
 		us := manage.CheckUpdate(record)
 		if us.Err != nil {
@@ -99,7 +109,7 @@ func statusForRecord(record *manage.SkillRecord, check bool) string {
 		return "up to date"
 	}
 
-	// Without --check, do quick local-only checks
+	// Without --check, do quick local-only checks then fall back to cached result.
 	if record.Source.Type == "local" {
 		hostname, _ := os.Hostname()
 		if record.Source.Hostname != hostname {
@@ -109,10 +119,21 @@ func statusForRecord(record *manage.SkillRecord, check bool) string {
 			return "source missing"
 		}
 	}
+
+	if uce != nil {
+		if uce.ErrMsg != "" {
+			return "check error"
+		}
+		if uce.HasUpdate {
+			return "update available"
+		}
+		return "up to date"
+	}
+
 	return "managed"
 }
 
-func printSkillDetail(home string, record *manage.SkillRecord, check bool) {
+func printSkillDetail(home string, record *manage.SkillRecord, check bool, uce *manage.UpdateCheckEntry) {
 	fmt.Printf("Name:      %s\n", record.Name)
 	fmt.Printf("Path:      %s\n", tildeSubstPath(home, record.InstallPath))
 	fmt.Printf("Source:    %s\n", recordSource(home, record))
@@ -135,6 +156,18 @@ func printSkillDetail(home string, record *manage.SkillRecord, check bool) {
 			fmt.Printf("Status:    update available (%s)\n", shortSHA(us.RemoteSHA))
 		} else {
 			fmt.Printf("Status:    up to date\n")
+		}
+	} else if uce != nil {
+		if uce.ErrMsg != "" {
+			fmt.Printf("Status:    check error: %s (checked %s)\n", uce.ErrMsg, uce.CheckedAt.Format("2006-01-02"))
+		} else if uce.HasUpdate {
+			if uce.RemoteSHA != "" {
+				fmt.Printf("Status:    update available (%s → %s, checked %s)\n", shortSHA(record.Source.ResolvedSHA), shortSHA(uce.RemoteSHA), uce.CheckedAt.Format("2006-01-02"))
+			} else {
+				fmt.Printf("Status:    update available (checked %s)\n", uce.CheckedAt.Format("2006-01-02"))
+			}
+		} else {
+			fmt.Printf("Status:    up to date (checked %s)\n", uce.CheckedAt.Format("2006-01-02"))
 		}
 	}
 }
