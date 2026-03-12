@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -136,6 +137,14 @@ func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsMan
 			}
 			switch s.ManagedRelation {
 			case discover.ManagedRelationMatches:
+				if manifest != nil {
+					if record, ok := manifest.Skills[s.Name]; ok &&
+						record.Source.Type == "local" &&
+						record.Source.Path == filepath.Dir(s.Path) {
+						fmt.Printf("  %s  %s\n", pad, styleManagedKey.Render("↑ source of managed version"))
+						break
+					}
+				}
 				fmt.Printf("  %s  %s\n", pad, styleAlias.Render("✓ matches managed version"))
 			case discover.ManagedRelationDiffers:
 				fmt.Printf("  %s  %s\n", pad, styleConflict.Render("⚠ differs from managed version"))
