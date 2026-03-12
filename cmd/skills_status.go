@@ -99,10 +99,24 @@ func shortContentHash(hash string) string {
 }
 
 func statusForRecord(record *manage.SkillRecord, check bool, uce *manage.UpdateCheckEntry) string {
+	if hash, err := manage.ContentHashForPath(record.InstallPath); err == nil && hash != record.ContentHash {
+		if check {
+			// The detailed status from CheckUpdate will combine local and upstream state.
+		} else {
+			return "locally modified"
+		}
+	}
+
 	if check {
 		us := manage.CheckUpdate(record)
 		if us.Err != nil {
 			return "error: " + us.Err.Error()
+		}
+		if us.LocalModified && us.HasUpdate {
+			return "update available + local changes"
+		}
+		if us.LocalModified {
+			return "locally modified"
 		}
 		if us.HasUpdate {
 			return "update available"
@@ -153,6 +167,14 @@ func printSkillDetail(home string, record *manage.SkillRecord, check bool, uce *
 		us := manage.CheckUpdate(record)
 		if us.Err != nil {
 			fmt.Printf("Status:    error: %s\n", us.Err)
+		} else if us.LocalModified && us.HasUpdate {
+			if us.RemoteSHA != "" {
+				fmt.Printf("Status:    update available and locally modified (%s → %s)\n", shortSHA(record.Source.ResolvedSHA), shortSHA(us.RemoteSHA))
+			} else {
+				fmt.Printf("Status:    update available and locally modified\n")
+			}
+		} else if us.LocalModified {
+			fmt.Printf("Status:    locally modified\n")
 		} else if us.HasUpdate {
 			fmt.Printf("Status:    update available (%s)\n", shortSHA(us.RemoteSHA))
 		} else {

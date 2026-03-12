@@ -10,10 +10,11 @@ import (
 
 // UpdateStatus reports the result of checking a skill for upstream changes.
 type UpdateStatus struct {
-	Name      string
-	HasUpdate bool
-	RemoteSHA string // populated for git sources
-	Err       error
+	Name          string
+	HasUpdate     bool
+	LocalModified bool
+	RemoteSHA     string // populated for git sources
+	Err           error
 }
 
 // CheckUpdate inspects a skill record against its source to detect available updates.
@@ -21,6 +22,13 @@ type UpdateStatus struct {
 // For local sources it checks the source path on the same host.
 func CheckUpdate(record *SkillRecord) UpdateStatus {
 	status := UpdateStatus{Name: record.Name}
+
+	installedHash, err := contentHash(record.InstallPath)
+	if err != nil {
+		status.Err = fmt.Errorf("hash installed dir: %w", err)
+		return status
+	}
+	status.LocalModified = installedHash != record.ContentHash
 
 	switch record.Source.Type {
 	case "git":
@@ -46,7 +54,7 @@ func CheckUpdate(record *SkillRecord) UpdateStatus {
 			status.Err = fmt.Errorf("source path %q no longer exists", record.Source.Path)
 			return status
 		}
-		hash, err := contentHashSkippingVCS(record.Source.Path)
+		hash, err := hashInstallableSnapshot(record.Source.Path)
 		if err != nil {
 			status.Err = fmt.Errorf("hash source dir: %w", err)
 			return status

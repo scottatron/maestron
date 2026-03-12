@@ -257,6 +257,28 @@ func contentHashWithOptions(dir string, skipVCS bool) (string, error) {
 	return fmt.Sprintf("sha256:%x", h.Sum(nil)), nil
 }
 
+// ContentHashForPath returns the content hash for a directory as installed.
+func ContentHashForPath(dir string) (string, error) {
+	return contentHash(dir)
+}
+
+// hashInstallableSnapshot computes the canonical content hash for a source
+// directory by first applying the same copy rules used during installation.
+func hashInstallableSnapshot(src string) (string, error) {
+	tmpdir, err := os.MkdirTemp("", "maestron-skill-hash-*")
+	if err != nil {
+		return "", fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpdir)
+
+	snapshotDir := filepath.Join(tmpdir, "snapshot")
+	if err := copyDir(src, snapshotDir); err != nil {
+		return "", fmt.Errorf("stage snapshot: %w", err)
+	}
+
+	return contentHash(snapshotDir)
+}
+
 // vcsDirs is the set of version-control metadata directories to skip during copy.
 var vcsDirs = map[string]bool{
 	".git": true, ".hg": true, ".svn": true, ".bzr": true, "_darcs": true,

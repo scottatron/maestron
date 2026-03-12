@@ -123,7 +123,15 @@ func runSkillsUpdateCheck(names []string, manifest *manage.SkillsManifest) error
 			lastErr = us.Err
 			continue
 		}
-		if us.HasUpdate {
+		if us.LocalModified && us.HasUpdate {
+			if us.RemoteSHA != "" {
+				fmt.Printf("↑ %s: update available and locally modified (%s → %s)\n", name, shortSHA(record.Source.ResolvedSHA), shortSHA(us.RemoteSHA))
+			} else {
+				fmt.Printf("↑ %s: update available and locally modified\n", name)
+			}
+		} else if us.LocalModified {
+			fmt.Printf("! %s: locally modified\n", name)
+		} else if us.HasUpdate {
 			if us.RemoteSHA != "" {
 				fmt.Printf("↑ %s: update available (%s → %s)\n", name, shortSHA(record.Source.ResolvedSHA), shortSHA(us.RemoteSHA))
 			} else {
