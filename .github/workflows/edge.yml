@@ -1,0 +1,103 @@
+name: Edge Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  edge:
+    name: Build and Publish Edge Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Skip if commit is an exact release tag
+        id: check
+        run: |
+          if git describe --exact-match HEAD 2>/dev/null | grep -qE '^v[0-9]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.check.outputs.skip == 'false'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Get version
+        if: steps.check.outputs.skip == 'false'
+        id: version
+        run: echo "version=$(git describe --tags --always)" >> "$GITHUB_OUTPUT"
+
+      - name: Build binaries
+        if: steps.check.outputs.skip == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          for PLATFORM in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            OS="${PLATFORM%/*}"
+            ARCH="${PLATFORM#*/}"
+            GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 \
+              go build -trimpath \
+                -ldflags="-s -w -X github.com/scottatron/maestron/cmd.version=${VERSION}" \
+                -o "dist/maestron_${VERSION}_${OS}_${ARCH}" .
+          done
+
+      - name: Generate checksums
+        if: steps.check.outputs.skip == 'false'
+        run: cd dist && sha256sum maestron_* > checksums.txt
+
+      - name: Generate changelog since last release
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]' | head -1)
+          RANGE="${PREV_TAG:+${PREV_TAG}..HEAD}"
+
+          FEATURES=$(git log ${RANGE:-HEAD} --pretty=format:"- %s (%h)" | grep -iE '^- feat(\(.+\))?[^!]:' || true)
+          FIXES=$(git log ${RANGE:-HEAD}    --pretty=format:"- %s (%h)" | grep -iE '^- fix(\(.+\))?[^!]:' || true)
+          OTHERS=$(git log ${RANGE:-HEAD}   --pretty=format:"- %s (%h)" | grep -viE '^- (feat|fix|chore|docs|ci|test|style|refactor|perf)(\(.+\))?[!:]' || true)
+
+          BODY="Rolling pre-release built from \`main\` — updates automatically on every push.\n\n"
+          [ -n "$FEATURES" ] && BODY="${BODY}## Features\n${FEATURES}\n\n"
+          [ -n "$FIXES" ]    && BODY="${BODY}## Bug Fixes\n${FIXES}\n\n"
+          [ -n "$OTHERS" ]   && BODY="${BODY}## Other Changes\n${OTHERS}\n\n"
+
+          if [ -n "$PREV_TAG" ]; then
+            BODY="${BODY}**Changes since ${PREV_TAG}:** https://github.com/${{ github.repository }}/compare/${PREV_TAG}...main\n"
+          fi
+
+          printf "%b" "$BODY" > /tmp/edge-changelog.md
+          cat /tmp/edge-changelog.md
+
+      - name: Move edge tag to HEAD
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f edge
+          git push -f origin edge
+
+      - name: Update edge release
+        if: steps.check.outputs.skip == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: edge
+          name: "Edge (${{ steps.version.outputs.version }})"
+          prerelease: true
+          make_latest: false
+          body_path: /tmp/edge-changelog.md
+          files: |
+            dist/maestron_*
+            dist/checksums.txt
+          fail_on_unmatched_files: true
