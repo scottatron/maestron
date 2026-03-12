@@ -182,9 +182,13 @@ func renderManagedMeta(r *manage.SkillRecord) string {
 			parts = append(parts, kv("sha", sha))
 		}
 	} else {
-		sourceVal := r.Source.Path
+		srcPath := r.Source.Path
+		if home, err := platform.HomeDir(); err == nil {
+			srcPath = tildeSubstPath(home, srcPath)
+		}
+		sourceVal := srcPath
 		if r.Source.Hostname != "" {
-			sourceVal = r.Source.Hostname + ":" + r.Source.Path
+			sourceVal = r.Source.Hostname + ":" + srcPath
 		}
 		parts = append(parts, kv("source", sourceVal))
 	}
