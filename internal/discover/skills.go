@@ -22,17 +22,26 @@ type skillFrontmatter struct {
 func ListSkills() ([]SkillInfo, error) {
 	var skills []SkillInfo
 
-	// Project-local skills
 	root, _, _ := agents.FindAgentsConfig()
+
+	// Project-local skills (highest priority)
 	if root != "" {
-		if projectSkills, err := discoverProjectSkills(root); err == nil {
-			skills = append(skills, projectSkills...)
+		for _, rel := range []string{".agents/skills", ".claude/skills", ".codex/skills", ".github/skills"} {
+			src := rel[:strings.Index(rel, "/")]
+			if s, err := discoverSkillsDir(filepath.Join(root, rel), src+"-project"); err == nil {
+				skills = append(skills, s...)
+			}
 		}
 	}
 
-	// User-global skills from ~/.agents/skills/
-	if globalSkills, err := discoverGlobalAgentSkills(); err == nil {
-		skills = append(skills, globalSkills...)
+	// User-global skills
+	if home, err := platform.HomeDir(); err == nil {
+		for _, rel := range []string{".agents/skills", ".claude/skills", ".codex/skills", ".github/skills"} {
+			src := rel[:strings.Index(rel, "/")]
+			if s, err := discoverSkillsDir(filepath.Join(home, rel), src+"-global"); err == nil {
+				skills = append(skills, s...)
+			}
+		}
 	}
 
 	// Claude native skills from plugins cache
@@ -54,17 +63,6 @@ func ListSkills() ([]SkillInfo, error) {
 	return deduped, nil
 }
 
-func discoverGlobalAgentSkills() ([]SkillInfo, error) {
-	home, err := platform.HomeDir()
-	if err != nil {
-		return nil, err
-	}
-	return discoverSkillsDir(filepath.Join(home, ".agents", "skills"), "global")
-}
-
-func discoverProjectSkills(projectRoot string) ([]SkillInfo, error) {
-	return discoverSkillsDir(filepath.Join(projectRoot, ".agents", "skills"), "project")
-}
 
 func discoverSkillsDir(skillsDir, source string) ([]SkillInfo, error) {
 	entries, err := os.ReadDir(skillsDir)
