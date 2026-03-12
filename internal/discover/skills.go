@@ -260,6 +260,30 @@ func walkClaudePlugins(cacheRoot, home string, cache *SkillCache) []SkillInfo {
 	return skills
 }
 
+// walkWorkspaceSkills recursively walks the workspace root for SKILL.md files.
+// Each skill's source label is the tilde-substituted path of its nearest
+// ancestor directory whose name contains "skills". Skills with no such ancestor
+// are skipped.
+func walkWorkspaceSkills(root, home string, cache *SkillCache) []SkillInfo {
+	var skills []SkillInfo
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error { //nolint:errcheck
+		if err != nil || info.IsDir() || info.Name() != "SKILL.md" {
+			return nil
+		}
+		ancestor := skillsAncestor(path, root)
+		if ancestor == "" {
+			return nil
+		}
+		source := tildeSubst(ancestor, home)
+		skill, err := loadSkillCached(path, source, cache)
+		if err == nil {
+			skills = append(skills, skill)
+		}
+		return nil
+	})
+	return skills
+}
+
 func parseSkillFrontmatter(data []byte) (*skillFrontmatter, error) {
 	if !bytes.HasPrefix(data, []byte("---")) {
 		return &skillFrontmatter{}, nil
