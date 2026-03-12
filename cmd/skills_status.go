@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -49,23 +50,41 @@ func runSkillsStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	t := output.NewTable(os.Stdout, []string{"NAME", "SOURCE", "VERSION", "UPDATED", "STATUS"})
+	t := output.NewTable(os.Stdout, []string{"NAME", "SOURCE", "SHA", "HASH", "UPDATED", "STATUS"})
 	for _, record := range manifest.Skills {
-		source := record.Source.URL
-		if record.Source.Type == "local" {
-			source = record.Source.Path
-		}
-		version := shortSHA(record.Source.ResolvedSHA)
-		if record.Source.Type == "local" {
-			version = record.Source.Hostname
-		}
+		source := recordSource(home, record)
+		sha := shortSHA(record.Source.ResolvedSHA) // empty for local
+		hash := shortContentHash(record.ContentHash)
 		updated := record.UpdatedAt.Format("2006-01-02")
-
 		status := statusForRecord(record, statusCheck)
-		t.Row(record.Name, tildeSubstPath(home, source), version, updated, status)
+		t.Row(record.Name, source, sha, hash, updated, status)
 	}
 	t.Flush()
 	return nil
+}
+
+// recordSource returns the formatted source string for the status table,
+// matching the style used in the skills list managed metadata.
+func recordSource(home string, record *manage.SkillRecord) string {
+	if record.Source.Type == "git" {
+		return stripURLScheme(record.Source.URL)
+	}
+	srcPath := tildeSubstPath(home, record.Source.Path)
+	if record.Source.Hostname != "" {
+		return record.Source.Hostname + ":" + srcPath
+	}
+	return srcPath
+}
+
+// shortContentHash returns the first 8 hex characters of a "sha256:..." hash.
+func shortContentHash(hash string) string {
+	if after, ok := strings.CutPrefix(hash, "sha256:"); ok {
+		if len(after) > 8 {
+			return after[:8]
+		}
+		return after
+	}
+	return hash
 }
 
 func statusForRecord(record *manage.SkillRecord, check bool) string {
@@ -96,17 +115,13 @@ func statusForRecord(record *manage.SkillRecord, check bool) string {
 func printSkillDetail(home string, record *manage.SkillRecord, check bool) {
 	fmt.Printf("Name:      %s\n", record.Name)
 	fmt.Printf("Path:      %s\n", tildeSubstPath(home, record.InstallPath))
-	fmt.Printf("Source:    %s\n", record.Source.Type)
+	fmt.Printf("Source:    %s\n", recordSource(home, record))
 	if record.Source.Type == "git" {
-		fmt.Printf("URL:       %s\n", record.Source.URL)
 		fmt.Printf("Ref:       %s\n", record.Source.Ref)
 		fmt.Printf("SHA:       %s\n", record.Source.ResolvedSHA)
 		if record.Source.Subpath != "" {
 			fmt.Printf("Subpath:   %s\n", record.Source.Subpath)
 		}
-	} else {
-		fmt.Printf("SrcPath:   %s\n", record.Source.Path)
-		fmt.Printf("Hostname:  %s\n", record.Source.Hostname)
 	}
 	fmt.Printf("Hash:      %s\n", record.ContentHash)
 	fmt.Printf("Installed: %s\n", record.InstalledAt.Format("2006-01-02T15:04:05Z"))
