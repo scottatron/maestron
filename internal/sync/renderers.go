@@ -103,21 +103,29 @@ func RenderClaude(root string, servers map[string]agents.MCPServerDef) (RenderOu
 
 // RenderCodex generates .codex/config.toml
 func RenderCodex(root string, servers map[string]agents.MCPServerDef) (RenderOutput, error) {
-	type codexServer struct {
-		Command string   `toml:"command"`
-		Args    []string `toml:"args,omitempty"`
-		Enabled bool     `toml:"enabled"`
-	}
-	type codexConfig struct {
-		MCPServers map[string]codexServer `toml:"mcp_servers"`
+	type rawConfig struct {
+		MCPServers map[string]interface{} `toml:"mcp_servers"`
 	}
 
-	cfg := codexConfig{MCPServers: map[string]codexServer{}}
+	cfg := rawConfig{MCPServers: map[string]interface{}{}}
 	for name, def := range servers {
-		cfg.MCPServers[name] = codexServer{
-			Command: def.Command,
-			Args:    def.Args,
-			Enabled: true,
+		if def.Transport == "http" || def.Transport == "sse" || def.URL != "" {
+			cfg.MCPServers[name] = map[string]interface{}{
+				"url":     def.URL,
+				"enabled": true,
+			}
+		} else {
+			entry := map[string]interface{}{
+				"command": def.Command,
+				"enabled": true,
+			}
+			if len(def.Args) > 0 {
+				entry["args"] = def.Args
+			}
+			if len(def.Env) > 0 {
+				entry["env"] = def.Env
+			}
+			cfg.MCPServers[name] = entry
 		}
 	}
 
