@@ -12,14 +12,20 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/scottatron/maestron/internal/discover"
+	"github.com/scottatron/maestron/internal/manage"
 	"github.com/scottatron/maestron/internal/output"
+	"github.com/scottatron/maestron/internal/platform"
 )
 
 var (
-	styleSource = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "#5B21B6", Dark: "#A78BFA"})
-	styleCount  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#6B7280"})
-	styleName   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#111827", Dark: "#F9FAFB"})
-	styleDesc   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"})
+	styleSource      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "#5B21B6", Dark: "#A78BFA"})
+	styleCount       = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#6B7280"})
+	styleName        = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#111827", Dark: "#F9FAFB"})
+	styleDesc        = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"})
+	styleManagedKey   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#0E7490", Dark: "#22D3EE"})
+	styleManagedVal   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#A5F3FC"})
+	styleAlias        = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#6B7280"})
+	styleConflict     = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FCD34D"})
 )
 
 var skillsSource string
@@ -50,13 +56,19 @@ func runSkills(cmd *cobra.Command, args []string) error {
 		skills = filtered
 	}
 
+	// Load managed skills manifest for inline annotations (best-effort).
+	var manifest *manage.SkillsManifest
+	if home, err := platform.HomeDir(); err == nil {
+		manifest, _ = manage.LoadManifest(home)
+	}
+
 	output.Print(skills, func() {
-		renderSkillsTable(skills)
+		renderSkillsTable(skills, manifest)
 	})
 	return nil
 }
 
-func renderSkillsTable(skills []discover.SkillInfo) {
+func renderSkillsTable(skills []discover.SkillInfo, manifest *manage.SkillsManifest) {
 	if len(skills) == 0 {
 		fmt.Println("No skills found.")
 		return
@@ -67,10 +79,10 @@ func renderSkillsTable(skills []discover.SkillInfo) {
 		return
 	}
 
-	renderSkillsGrouped(skills, ttyWidth())
+	renderSkillsGrouped(skills, manifest, ttyWidth())
 }
 
-func renderSkillsGrouped(skills []discover.SkillInfo, width int) {
+func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsManifest, width int) {
 	// Calculate name column width from the widest name, capped at 40.
 	maxName := 0
 	for _, s := range skills {
@@ -116,6 +128,18 @@ func renderSkillsGrouped(skills []discover.SkillInfo, width int) {
 			desc := truncateRunes(s.Description, descWidth)
 			name := styleName.Render(fmt.Sprintf("%-*s", maxName, s.Name))
 			fmt.Printf("  %s  %s\n", name, styleDesc.Render(desc))
+			pad := strings.Repeat(" ", maxName)
+			if manifest != nil {
+				if record, ok := manifest.Skills[s.Name]; ok {
+					fmt.Printf("  %s  %s\n", pad, renderManagedMeta(record))
+				}
+			}
+			switch s.ManagedRelation {
+			case discover.ManagedRelationMatches:
+				fmt.Printf("  %s  %s\n", pad, styleAlias.Render("✓ matches managed version"))
+			case discover.ManagedRelationDiffers:
+				fmt.Printf("  %s  %s\n", pad, styleConflict.Render("⚠ differs from managed version"))
+			}
 		}
 	}
 }
@@ -140,6 +164,32 @@ func ttyWidth() int {
 		}
 	}
 	return 120
+}
+
+// renderManagedMeta formats the managed-skill metadata as inline key: value pairs.
+func renderManagedMeta(r *manage.SkillRecord) string {
+	kv := func(key, val string) string {
+		return styleManagedKey.Render(key+":") + " " + styleManagedVal.Render(val)
+	}
+
+	var parts []string
+	if r.Source.Type == "git" {
+		parts = append(parts, kv("source", "git"))
+		if r.Source.Ref != "" {
+			parts = append(parts, kv("ref", r.Source.Ref))
+		}
+		if sha := shortSHA(r.Source.ResolvedSHA); sha != "" {
+			parts = append(parts, kv("sha", sha))
+		}
+	} else {
+		parts = append(parts, kv("source", "local"))
+		if r.Source.Hostname != "" {
+			parts = append(parts, kv("host", r.Source.Hostname))
+		}
+	}
+	parts = append(parts, kv("updated", r.UpdatedAt.Format("2006-01-02")))
+
+	return strings.Join(parts, "  ")
 }
 
 func truncateRunes(s string, max int) string {

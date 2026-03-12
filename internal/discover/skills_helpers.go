@@ -3,6 +3,7 @@ package discover
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -41,6 +42,53 @@ func skillsAncestor(filePath, root string) string {
 		}
 		dir = filepath.Dir(dir)
 	}
+}
+
+// parsePluginSource parses a source label of the form "plugin@registry:version"
+// (as produced by claudePluginLabel) and returns the base ("plugin@registry"),
+// the parsed semver, and true. Returns false if the label doesn't match.
+func parsePluginSource(source string) (base string, version [3]int, ok bool) {
+	atIdx := strings.Index(source, "@")
+	if atIdx < 0 {
+		return "", version, false
+	}
+	colonIdx := strings.LastIndex(source, ":")
+	if colonIdx < 0 || colonIdx < atIdx {
+		return "", version, false
+	}
+	base = source[:colonIdx]
+	version, ok = parseSemver(source[colonIdx+1:])
+	return base, version, ok
+}
+
+// parseSemver parses a "major.minor.patch" string. Returns false if it doesn't match.
+func parseSemver(v string) ([3]int, bool) {
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return [3]int{}, false
+	}
+	var nums [3]int
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 {
+			return [3]int{}, false
+		}
+		nums[i] = n
+	}
+	return nums, true
+}
+
+// compareVersion returns -1, 0, or 1 comparing semver a to b.
+func compareVersion(a, b [3]int) int {
+	for i := range a {
+		if a[i] < b[i] {
+			return -1
+		}
+		if a[i] > b[i] {
+			return 1
+		}
+	}
+	return 0
 }
 
 // claudePluginLabel derives a human-readable source label for a Claude plugin

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -44,18 +45,83 @@ func ListSkills() ([]SkillInfo, error) {
 	cache.Prune()
 	cache.Save(home) //nolint:errcheck
 
-	// Deduplicate by name+source (first occurrence wins)
-	seen := map[string]bool{}
-	deduped := skills[:0]
+	// Pass 1: find the highest version for each versioned plugin skill.
+	type pluginKey struct{ name, base string }
+	type bestVersion struct {
+		ver    [3]int
+		source string
+	}
+	pluginBest := map[pluginKey]bestVersion{}
 	for _, s := range skills {
-		key := s.Source + ":" + s.Name
-		if !seen[key] {
-			seen[key] = true
-			deduped = append(deduped, s)
+		base, ver, isPlugin := parsePluginSource(s.Source)
+		if !isPlugin {
+			continue
+		}
+		k := pluginKey{s.Name, base}
+		if existing, ok := pluginBest[k]; !ok || compareVersion(ver, existing.ver) > 0 {
+			pluginBest[k] = bestVersion{ver, s.Source}
 		}
 	}
 
-	return deduped, nil
+	// Pass 2: annotate with managed-skill relationship and deduplicate.
+	//
+	// Skills under ~/.agents/skills are "managed" (ManagedRelationIs).
+	// Same-named skills at other paths are kept and annotated:
+	//   - ManagedRelationMatches: content hash is identical to the managed copy
+	//   - ManagedRelationDiffers: content hash differs from the managed copy
+	// Skills with no managed counterpart use first-occurrence-wins per source.
+	managedDir := filepath.Join(home, ".agents", "skills")
+	managedByName := map[string]SkillInfo{}  // name → managed SkillInfo
+	seenOther := map[string]bool{}           // source+name dedup for non-managed skills
+	seenPlugin := map[string]bool{}          // name+base dedup for plugin skills
+
+	var result []SkillInfo
+
+	for _, s := range skills {
+		// Plugin version filter: skip older versions.
+		base, _, isPlugin := parsePluginSource(s.Source)
+		if isPlugin {
+			best := pluginBest[pluginKey{s.Name, base}]
+			if s.Source != best.source {
+				continue
+			}
+			pk := s.Name + "\x00" + base
+			if seenPlugin[pk] {
+				continue
+			}
+			seenPlugin[pk] = true
+		}
+
+		isManaged := strings.HasPrefix(s.Path, managedDir+string(filepath.Separator))
+
+		if isManaged {
+			// First managed copy of this name wins; record it for comparison.
+			if _, exists := managedByName[s.Name]; !exists {
+				s.ManagedRelation = ManagedRelationIs
+				managedByName[s.Name] = s
+				result = append(result, s)
+			}
+			continue
+		}
+
+		// Non-managed: annotate with match status if a managed copy exists.
+		if ms, ok := managedByName[s.Name]; ok {
+			if s.ContentHash == ms.ContentHash {
+				s.ManagedRelation = ManagedRelationMatches
+			} else {
+				s.ManagedRelation = ManagedRelationDiffers
+			}
+		}
+
+		// Deduplicate per source+name; keep the annotated skill.
+		key := s.Source + ":" + s.Name
+		if !seenOther[key] {
+			seenOther[key] = true
+			result = append(result, s)
+		}
+	}
+
+	return result, nil
 }
 
 // loadSkillCached reads a SKILL.md file, using the cache to skip frontmatter
@@ -76,6 +142,7 @@ func loadSkillCached(path, source string, cache *SkillCache) (SkillInfo, error) 
 			Description: entry.Description,
 			Source:      source,
 			Path:        path,
+			ContentHash: hash,
 		}, nil
 	}
 
@@ -96,6 +163,7 @@ func loadSkillCached(path, source string, cache *SkillCache) (SkillInfo, error) 
 		Description: desc,
 		Source:      source,
 		Path:        path,
+		ContentHash: hash,
 	}, nil
 }
 

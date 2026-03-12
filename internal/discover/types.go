@@ -62,12 +62,32 @@ type SessionFilter struct {
 	Since   time.Duration
 }
 
+// ManagedRelation describes how a skill relates to its managed counterpart in
+// ~/.agents/skills.
+type ManagedRelation string
+
+const (
+	// ManagedRelationNone means no managed version exists for this skill name.
+	ManagedRelationNone ManagedRelation = ""
+	// ManagedRelationIs means this skill IS the managed version.
+	ManagedRelationIs ManagedRelation = "managed"
+	// ManagedRelationMatches means a managed version exists and content is identical.
+	ManagedRelationMatches ManagedRelation = "matches"
+	// ManagedRelationDiffers means a managed version exists but content differs.
+	ManagedRelationDiffers ManagedRelation = "differs"
+)
+
 // SkillInfo describes a discovered skill.
 type SkillInfo struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Source      string `json:"source"`
 	Path        string `json:"path"`
+	// ContentHash is the sha256 of the SKILL.md content, used for deduplication.
+	ContentHash string `json:"content_hash,omitempty"`
+	// ManagedRelation describes the relationship between this skill and the managed
+	// copy in ~/.agents/skills (if any).
+	ManagedRelation ManagedRelation `json:"managed_relation,omitempty"`
 }
 
 // MCPServerInfo describes a configured MCP server.
