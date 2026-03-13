@@ -252,6 +252,10 @@ var vcsDirs = map[string]bool{
 // copyDir copies src directory to dst, replacing dst if it exists.
 // VCS metadata directories (.git, .hg, etc.) are skipped.
 func copyDir(src, dst string) error {
+	// Validate source before any destructive operation on dst.
+	if _, err := os.Stat(src); err != nil {
+		return fmt.Errorf("source directory: %w", err)
+	}
 	if err := os.RemoveAll(dst); err != nil {
 		return err
 	}
