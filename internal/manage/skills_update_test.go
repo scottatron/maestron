@@ -49,6 +49,35 @@ func TestCheckUpdateAnnotatedTagUsesPeeledCommit(t *testing.T) {
 	}
 }
 
+func TestCheckUpdateLocalIgnoresVCSMetadata(t *testing.T) {
+	t.Parallel()
+
+	home := t.TempDir()
+	srcDir := filepath.Join(home, "source-skill")
+	if err := os.MkdirAll(filepath.Join(srcDir, ".git"), 0755); err != nil {
+		t.Fatalf("create source dirs: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "SKILL.md"), []byte("# Skill\n"), 0644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0644); err != nil {
+		t.Fatalf("write .git/HEAD: %v", err)
+	}
+
+	record, err := InstallFromLocal(home, srcDir, "example")
+	if err != nil {
+		t.Fatalf("InstallFromLocal returned error: %v", err)
+	}
+
+	status := CheckUpdate(record)
+	if status.Err != nil {
+		t.Fatalf("CheckUpdate returned error: %v", status.Err)
+	}
+	if status.HasUpdate {
+		t.Fatalf("expected no update when only VCS metadata differs, got %+v", status)
+	}
+}
+
 func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 

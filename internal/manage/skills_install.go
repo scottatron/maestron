@@ -216,10 +216,23 @@ func InstallFromLocal(home, srcPath, name string) (*SkillRecord, error) {
 
 // contentHash returns a sha256 hash of all files in dir, sorted by relative path.
 func contentHash(dir string) (string, error) {
+	return contentHashWithOptions(dir, false)
+}
+
+// contentHashSkippingVCS hashes the effective file set used for copied skills by
+// ignoring VCS metadata directories such as .git.
+func contentHashSkippingVCS(dir string) (string, error) {
+	return contentHashWithOptions(dir, true)
+}
+
+func contentHashWithOptions(dir string, skipVCS bool) (string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if skipVCS && d.IsDir() && vcsDirs[d.Name()] {
+			return filepath.SkipDir
 		}
 		if !d.IsDir() {
 			rel, _ := filepath.Rel(dir, path)

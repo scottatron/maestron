@@ -46,7 +46,7 @@ func CheckUpdate(record *SkillRecord) UpdateStatus {
 			status.Err = fmt.Errorf("source path %q no longer exists", record.Source.Path)
 			return status
 		}
-		hash, err := contentHash(record.Source.Path)
+		hash, err := contentHashSkippingVCS(record.Source.Path)
 		if err != nil {
 			status.Err = fmt.Errorf("hash source dir: %w", err)
 			return status
