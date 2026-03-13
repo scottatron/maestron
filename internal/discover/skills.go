@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -45,6 +47,23 @@ func ListSkills() ([]SkillInfo, error) {
 	cache.Prune()
 	cache.Save(home) //nolint:errcheck
 
+	managedDir := filepath.Join(home, ".agents", "skills")
+	result := annotateManagedSync(skills, managedDir)
+
+	return result, nil
+}
+
+// annotateManagedSync applies plugin deduplication and managed-skill annotations
+// to a flat list of discovered skills. managedDir is the directory that holds
+// managed skill copies (e.g. ~/.agents/skills).
+//
+// Skills whose SKILL.md lives directly under managedDir are marked ManagedRelationIs.
+// Same-named skills at other paths are annotated:
+//   - ManagedRelationMatches: full directory hash is identical to the managed copy
+//   - ManagedRelationDiffers: full directory hash differs from the managed copy
+//
+// Skills with no managed counterpart use first-occurrence-wins per source.
+func annotateManagedSync(skills []SkillInfo, managedDir string) []SkillInfo {
 	// Pass 1: find the highest version for each versioned plugin skill.
 	type pluginKey struct{ name, base string }
 	type bestVersion struct {
@@ -63,17 +82,9 @@ func ListSkills() ([]SkillInfo, error) {
 		}
 	}
 
-	// Pass 2: annotate with managed-skill relationship and deduplicate.
-	//
-	// Skills under ~/.agents/skills are "managed" (ManagedRelationIs).
-	// Same-named skills at other paths are kept and annotated:
-	//   - ManagedRelationMatches: content hash is identical to the managed copy
-	//   - ManagedRelationDiffers: content hash differs from the managed copy
-	// Skills with no managed counterpart use first-occurrence-wins per source.
-	managedDir := filepath.Join(home, ".agents", "skills")
-	managedByName := map[string]SkillInfo{}  // name → managed SkillInfo
-	seenOther := map[string]bool{}           // source+name dedup for non-managed skills
-	seenPlugin := map[string]bool{}          // name+base dedup for plugin skills
+	managedByName := map[string]string{} // name → full-dir hash of managed copy
+	seenOther := map[string]bool{}       // source+name dedup for non-managed skills
+	seenPlugin := map[string]bool{}      // name+base dedup for plugin skills
 
 	var result []SkillInfo
 
@@ -95,18 +106,20 @@ func ListSkills() ([]SkillInfo, error) {
 		isManaged := strings.HasPrefix(s.Path, managedDir+string(filepath.Separator))
 
 		if isManaged {
-			// First managed copy of this name wins; record it for comparison.
+			// First managed copy of this name wins; record its directory hash.
 			if _, exists := managedByName[s.Name]; !exists {
 				s.ManagedRelation = ManagedRelationIs
-				managedByName[s.Name] = s
+				h, _ := dirContentHash(filepath.Dir(s.Path))
+				managedByName[s.Name] = h
 				result = append(result, s)
 			}
 			continue
 		}
 
 		// Non-managed: annotate with match status if a managed copy exists.
-		if ms, ok := managedByName[s.Name]; ok {
-			if s.ContentHash == ms.ContentHash {
+		if managedHash, ok := managedByName[s.Name]; ok {
+			skillHash, _ := dirContentHash(filepath.Dir(s.Path))
+			if skillHash != "" && skillHash == managedHash {
 				s.ManagedRelation = ManagedRelationMatches
 			} else {
 				s.ManagedRelation = ManagedRelationDiffers
@@ -121,7 +134,43 @@ func ListSkills() ([]SkillInfo, error) {
 		}
 	}
 
-	return result, nil
+	return result
+}
+
+// dirContentHash computes a sha256 hash over all files in dir, sorted by
+// relative path. Hidden directories (dot-prefixed) and VCS metadata are skipped
+// to match the file set copied by InstallFromLocal.
+func dirContentHash(dir string) (string, error) {
+	var files []string
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if strings.HasPrefix(d.Name(), ".") || vcsDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, _ := filepath.Rel(dir, path)
+		files = append(files, rel)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(files)
+
+	h := sha256.New()
+	for _, rel := range files {
+		fmt.Fprintf(h, "%s\n", rel)
+		data, err := os.ReadFile(filepath.Join(dir, rel))
+		if err != nil {
+			return "", err
+		}
+		h.Write(data)
+	}
+	return fmt.Sprintf("sha256:%x", h.Sum(nil)), nil
 }
 
 // loadSkillCached reads a SKILL.md file, using the cache to skip frontmatter
