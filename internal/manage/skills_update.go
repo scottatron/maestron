@@ -24,26 +24,11 @@ func CheckUpdate(record *SkillRecord) UpdateStatus {
 
 	switch record.Source.Type {
 	case "git":
-		ref := record.Source.Ref
-		if ref == "" {
-			ref = "HEAD"
-		}
-		out, err := exec.Command("git", "ls-remote", record.Source.URL, ref).Output()
+		remoteSHA, err := resolveRemoteGitSHA(record.Source.URL, record.Source.Ref)
 		if err != nil {
-			status.Err = fmt.Errorf("git ls-remote: %w", err)
+			status.Err = err
 			return status
 		}
-		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-		if len(lines) == 0 || lines[0] == "" {
-			status.Err = fmt.Errorf("no matching ref %q at %s", ref, record.Source.URL)
-			return status
-		}
-		parts := strings.Fields(lines[0])
-		if len(parts) < 1 {
-			status.Err = fmt.Errorf("unexpected git ls-remote output")
-			return status
-		}
-		remoteSHA := parts[0]
 		status.RemoteSHA = remoteSHA
 		// Compare: either could be a prefix of the other for short SHAs
 		if !strings.HasPrefix(remoteSHA, record.Source.ResolvedSHA) &&
@@ -72,6 +57,51 @@ func CheckUpdate(record *SkillRecord) UpdateStatus {
 	}
 
 	return status
+}
+
+func resolveRemoteGitSHA(url, ref string) (string, error) {
+	if ref == "" {
+		ref = "HEAD"
+	}
+	if shaPattern.MatchString(ref) {
+		// A pinned commit does not move upstream; compare against the pinned SHA.
+		return ref, nil
+	}
+
+	patterns := []string{ref}
+	if ref != "HEAD" {
+		patterns = append(patterns, ref+"^{}")
+	}
+
+	out, err := exec.Command("git", append([]string{"ls-remote", url}, patterns...)...).Output()
+	if err != nil {
+		return "", fmt.Errorf("git ls-remote: %w", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return "", fmt.Errorf("no matching ref %q at %s", ref, url)
+	}
+
+	var fallbackSHA string
+	for _, line := range lines {
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			return "", fmt.Errorf("unexpected git ls-remote output")
+		}
+		sha := parts[0]
+		remoteRef := parts[1]
+		if strings.HasSuffix(remoteRef, "^{}") {
+			return sha, nil
+		}
+		if fallbackSHA == "" {
+			fallbackSHA = sha
+		}
+	}
+	if fallbackSHA == "" {
+		return "", fmt.Errorf("unexpected git ls-remote output")
+	}
+	return fallbackSHA, nil
 }
 
 // UpdateSkill re-installs a skill from its source, preserving the original
