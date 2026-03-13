@@ -42,14 +42,7 @@ func runSkillsUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("specify a skill name, use --all, or use --check to check all skills")
 	}
 
-	var names []string
-	if updateAll || updateCheck {
-		for name := range manifest.Skills {
-			names = append(names, name)
-		}
-	} else {
-		names = []string{args[0]}
-	}
+	names := skillUpdateNames(args, manifest, updateAll, updateCheck)
 
 	if updateCheck {
 		return runSkillsUpdateCheck(names, manifest)
@@ -143,4 +136,16 @@ func runSkillsUpdateCheck(names []string, manifest *manage.SkillsManifest) error
 	// Persist results (best-effort; don't mask the real error)
 	cache.Save(home) //nolint:errcheck
 	return lastErr
+}
+
+func skillUpdateNames(args []string, manifest *manage.SkillsManifest, updateAll, updateCheck bool) []string {
+	if updateAll || (updateCheck && len(args) == 0) {
+		names := make([]string, 0, len(manifest.Skills))
+		for name := range manifest.Skills {
+			names = append(names, name)
+		}
+		return names
+	}
+
+	return []string{args[0]}
 }
