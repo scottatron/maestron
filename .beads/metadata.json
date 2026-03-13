@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "maestron",
+  "project_id": "a28f472f-bec4-4c02-9a52-0efc5a0321d8"
+}
