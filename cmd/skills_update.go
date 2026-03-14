@@ -18,6 +18,7 @@ var (
 var skillsUpdateCmd = &cobra.Command{
 	Use:   "update [name]",
 	Short: "Update a managed skill from its source",
+	Args:  cobra.MaximumNArgs(1),
 	RunE:  runSkillsUpdate,
 }
 

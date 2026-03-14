@@ -19,14 +19,14 @@ import (
 )
 
 var (
-	styleSource      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "#5B21B6", Dark: "#A78BFA"})
-	styleCount       = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#6B7280"})
-	styleName        = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#111827", Dark: "#F9FAFB"})
-	styleDesc        = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"})
-	styleManagedKey   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#0E7490", Dark: "#22D3EE"})
-	styleManagedVal   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#A5F3FC"})
-	styleAlias        = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#6B7280"})
-	styleConflict     = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FCD34D"})
+	styleSource     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.AdaptiveColor{Light: "#5B21B6", Dark: "#A78BFA"})
+	styleCount      = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#6B7280"})
+	styleName       = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#111827", Dark: "#F9FAFB"})
+	styleDesc       = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#9CA3AF"})
+	styleManagedKey = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#0E7490", Dark: "#22D3EE"})
+	styleManagedVal = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#374151", Dark: "#A5F3FC"})
+	styleAlias      = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#6B7280", Dark: "#6B7280"})
+	styleConflict   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FCD34D"})
 )
 
 var skillsSource string
@@ -103,7 +103,7 @@ func computeMetaLayout(skills []discover.SkillInfo, manifest *manage.SkillsManif
 		if s.ManagedRelation != discover.ManagedRelationIs {
 			continue
 		}
-		record := manifest.Skills[s.Name]
+		record := recordForDiscoveredSkill(manifest, s)
 		if record == nil {
 			continue
 		}
@@ -186,16 +186,12 @@ func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsMan
 			fmt.Printf("  %s  %s\n", name, styleDesc.Render(desc))
 			pad := strings.Repeat(" ", maxName)
 
-			var record *manage.SkillRecord
-			if manifest != nil {
-				record = manifest.Skills[s.Name]
-			}
+			record := recordForDiscoveredSkill(manifest, s)
+			sourceRecord := localSourceRecordForSkill(manifest, s)
 
 			// Determine if this occurrence is the local source the managed copy
 			// was installed from.
-			isSource := record != nil &&
-				record.Source.Type == "local" &&
-				record.Source.Path == filepath.Dir(s.Path)
+			isSource := sourceRecord != nil
 
 			switch {
 			case s.ManagedRelation == discover.ManagedRelationIs && record != nil:
@@ -209,7 +205,7 @@ func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsMan
 			case isSource:
 				// This path is where the managed copy was installed from.
 				// Show a compact "source of" line with a sync indicator.
-				installPath := tildeSubstPath(home, record.InstallPath)
+				installPath := tildeSubstPath(home, sourceRecord.InstallPath)
 				var syncLabel string
 				if s.ManagedRelation == discover.ManagedRelationDiffers {
 					syncLabel = "  " + styleConflict.Render("⚠ out of sync")
@@ -228,6 +224,46 @@ func renderSkillsGrouped(skills []discover.SkillInfo, manifest *manage.SkillsMan
 			}
 		}
 	}
+}
+
+func recordForDiscoveredSkill(manifest *manage.SkillsManifest, skill discover.SkillInfo) *manage.SkillRecord {
+	if manifest == nil {
+		return nil
+	}
+
+	key := filepath.Base(filepath.Dir(skill.Path))
+	if record := manifest.Skills[key]; record != nil {
+		return record
+	}
+	if record := manifest.Skills[skill.Name]; record != nil {
+		return record
+	}
+
+	if skill.ManagedRelation == discover.ManagedRelationIs {
+		skillDir := filepath.Dir(skill.Path)
+		for _, record := range manifest.Skills {
+			if record.InstallPath == skillDir {
+				return record
+			}
+		}
+	}
+
+	return nil
+}
+
+func localSourceRecordForSkill(manifest *manage.SkillsManifest, skill discover.SkillInfo) *manage.SkillRecord {
+	if manifest == nil {
+		return nil
+	}
+
+	skillDir := filepath.Dir(skill.Path)
+	for _, record := range manifest.Skills {
+		if record.Source.Type == "local" && record.Source.Path == skillDir {
+			return record
+		}
+	}
+
+	return nil
 }
 
 func renderSkillsPlain(skills []discover.SkillInfo) {

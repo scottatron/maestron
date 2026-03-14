@@ -82,9 +82,9 @@ func annotateManagedSync(skills []SkillInfo, managedDir string) []SkillInfo {
 		}
 	}
 
-	managedByName := map[string]string{} // name → full-dir hash of managed copy
-	seenOther := map[string]bool{}       // source+name dedup for non-managed skills
-	seenPlugin := map[string]bool{}      // name+base dedup for plugin skills
+	managedByKey := map[string]string{} // managed dir key → full-dir hash of managed copy
+	seenOther := map[string]bool{}      // source+managed-key dedup for non-managed skills
+	seenPlugin := map[string]bool{}     // name+base dedup for plugin skills
 
 	var result []SkillInfo
 
@@ -104,20 +104,21 @@ func annotateManagedSync(skills []SkillInfo, managedDir string) []SkillInfo {
 		}
 
 		isManaged := strings.HasPrefix(s.Path, managedDir+string(filepath.Separator))
+		managedKey := skillDirKey(s.Path)
 
 		if isManaged {
-			// First managed copy of this name wins; record its directory hash.
-			if _, exists := managedByName[s.Name]; !exists {
+			// First managed copy of this install dir wins; record its directory hash.
+			if _, exists := managedByKey[managedKey]; !exists {
 				s.ManagedRelation = ManagedRelationIs
 				h, _ := dirContentHash(filepath.Dir(s.Path))
-				managedByName[s.Name] = h
+				managedByKey[managedKey] = h
 				result = append(result, s)
 			}
 			continue
 		}
 
 		// Non-managed: annotate with match status if a managed copy exists.
-		if managedHash, ok := managedByName[s.Name]; ok {
+		if managedHash, ok := managedByKey[managedKey]; ok {
 			skillHash, _ := dirContentHash(filepath.Dir(s.Path))
 			if skillHash != "" && skillHash == managedHash {
 				s.ManagedRelation = ManagedRelationMatches
@@ -127,7 +128,7 @@ func annotateManagedSync(skills []SkillInfo, managedDir string) []SkillInfo {
 		}
 
 		// Deduplicate per source+name; keep the annotated skill.
-		key := s.Source + ":" + s.Name
+		key := s.Source + ":" + managedKey
 		if !seenOther[key] {
 			seenOther[key] = true
 			result = append(result, s)
@@ -138,8 +139,8 @@ func annotateManagedSync(skills []SkillInfo, managedDir string) []SkillInfo {
 }
 
 // dirContentHash computes a sha256 hash over all files in dir, sorted by
-// relative path. Hidden directories (dot-prefixed) and VCS metadata are skipped
-// to match the file set copied by InstallFromLocal.
+// relative path. VCS metadata directories are skipped to match the file set
+// copied by InstallFromLocal.
 func dirContentHash(dir string) (string, error) {
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -147,7 +148,7 @@ func dirContentHash(dir string) (string, error) {
 			return err
 		}
 		if d.IsDir() {
-			if strings.HasPrefix(d.Name(), ".") || vcsDir(d.Name()) {
+			if vcsDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -220,11 +221,17 @@ func loadSkillCached(path, source string, cache *SkillCache) (SkillInfo, error) 
 // as the source label for all skills found. Silently skips missing dirs.
 func walkSkillsDir(dir, source string, cache *SkillCache) []SkillInfo {
 	var skills []SkillInfo
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error { //nolint:errcheck
+	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error { //nolint:errcheck
 		if err != nil {
 			return nil
 		}
-		if info.IsDir() || info.Name() != "SKILL.md" {
+		if d.IsDir() {
+			if vcsDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.Name() != "SKILL.md" {
 			return nil
 		}
 		skill, err := loadSkillCached(path, source, cache)
@@ -234,6 +241,10 @@ func walkSkillsDir(dir, source string, cache *SkillCache) []SkillInfo {
 		return nil
 	})
 	return skills
+}
+
+func skillDirKey(path string) string {
+	return filepath.Base(filepath.Dir(path))
 }
 
 // walkGlobalSkills discovers skills from all standard global paths and the

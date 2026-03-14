@@ -1,6 +1,7 @@
 # Skills Discovery Redesign Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Track implementation work in `bd` issues instead of markdown task lists.
+> The checkbox-formatted steps below are a sequencing aid in the document, not an approved tracking mechanism for live work.
 
 **Goal:** Replace hardcoded fixed-depth skills discovery with recursive walks, path-based source labels, and a sha256 content cache.
 

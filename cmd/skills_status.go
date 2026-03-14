@@ -17,6 +17,7 @@ var statusCheck bool
 var skillsStatusCmd = &cobra.Command{
 	Use:   "status [name]",
 	Short: "Show status of managed skills",
+	Args:  cobra.MaximumNArgs(1),
 	RunE:  runSkillsStatus,
 }
 

@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"path/filepath"
 	"reflect"
 	"slices"
 	"testing"
 
+	"github.com/scottatron/maestron/internal/discover"
 	"github.com/scottatron/maestron/internal/manage"
 )
 
@@ -56,5 +58,73 @@ func TestSkillUpdateNames(t *testing.T) {
 				t.Fatalf("skillUpdateNames() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSkillsCommandsRejectExtraArgs(t *testing.T) {
+	t.Run("update", func(t *testing.T) {
+		if err := skillsUpdateCmd.Args(skillsUpdateCmd, []string{"one", "two"}); err == nil {
+			t.Fatal("expected update command to reject extra args")
+		}
+	})
+
+	t.Run("status", func(t *testing.T) {
+		if err := skillsStatusCmd.Args(skillsStatusCmd, []string{"one", "two"}); err == nil {
+			t.Fatal("expected status command to reject extra args")
+		}
+	})
+}
+
+func TestRecordForDiscoveredSkillUsesDirKey(t *testing.T) {
+	manifest := &manage.SkillsManifest{
+		Skills: map[string]*manage.SkillRecord{
+			"repo-skill": {
+				Name:        "repo-skill",
+				InstallPath: "/tmp/home/.agents/skills/repo-skill",
+			},
+		},
+	}
+
+	skill := discover.SkillInfo{
+		Name:            "frontmatter-name",
+		Path:            "/tmp/home/.agents/skills/repo-skill/SKILL.md",
+		ManagedRelation: discover.ManagedRelationIs,
+	}
+
+	record := recordForDiscoveredSkill(manifest, skill)
+	if record == nil {
+		t.Fatal("expected managed record lookup by skill dir name")
+	}
+	if record.Name != "repo-skill" {
+		t.Fatalf("record.Name = %q, want %q", record.Name, "repo-skill")
+	}
+}
+
+func TestLocalSourceRecordForSkillMatchesSourcePath(t *testing.T) {
+	srcDir := filepath.Join("/tmp", "repo-root")
+	manifest := &manage.SkillsManifest{
+		Skills: map[string]*manage.SkillRecord{
+			"repo-skill": {
+				Name:        "repo-skill",
+				InstallPath: "/tmp/home/.agents/skills/repo-skill",
+				Source: manage.SkillSource{
+					Type: "local",
+					Path: srcDir,
+				},
+			},
+		},
+	}
+
+	skill := discover.SkillInfo{
+		Name: "frontmatter-name",
+		Path: filepath.Join(srcDir, "SKILL.md"),
+	}
+
+	record := localSourceRecordForSkill(manifest, skill)
+	if record == nil {
+		t.Fatal("expected local source record lookup by source path")
+	}
+	if record.Name != "repo-skill" {
+		t.Fatalf("record.Name = %q, want %q", record.Name, "repo-skill")
 	}
 }
