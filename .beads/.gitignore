@@ -5,6 +5,7 @@ dolt-access.lock
 # Runtime files
 bd.sock
 bd.sock.startlock
+push-state.json
 sync-state.json
 last-touched
 
@@ -27,6 +28,7 @@ ephemeral.sqlite3-wal
 ephemeral.sqlite3-shm
 
 # Dolt server management (auto-started by bd)
+dolt-config.log
 dolt-server.pid
 dolt-server.log
 dolt-server.lock
