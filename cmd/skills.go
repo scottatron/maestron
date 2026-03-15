@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/term"
@@ -30,7 +31,7 @@ var (
 )
 
 var skillsSource string
-var skillsScanWorkspace bool
+var skillsFullScan bool
 
 var skillsCmd = &cobra.Command{
 	Use:   "skills",
@@ -40,13 +41,15 @@ var skillsCmd = &cobra.Command{
 
 func init() {
 	skillsCmd.Flags().StringVar(&skillsSource, "source", "", `filter by source path (e.g. "claude", "codex", "superpowers")`)
-	skillsCmd.Flags().BoolVar(&skillsScanWorkspace, "scan-workspace", false, "scan the current directory for workspace skills when outside a git repo")
+	skillsCmd.Flags().BoolVar(&skillsFullScan, "full-scan", false, "scan the current directory for workspace skills when outside a git repo")
 }
 
 func runSkills(cmd *cobra.Command, args []string) error {
+	stopProgress := startSkillsDiscoveryProgress()
 	skills, err := discover.ListSkillsWithOptions(discover.ListSkillsOptions{
-		ScanWorkspace: skillsScanWorkspace,
+		ScanWorkspace: skillsFullScan,
 	})
+	stopProgress()
 	if err != nil {
 		return err
 	}
@@ -74,6 +77,35 @@ func runSkills(cmd *cobra.Command, args []string) error {
 		renderSkillsTable(skills, manifest, updateCache, home)
 	})
 	return nil
+}
+
+func startSkillsDiscoveryProgress() func() {
+	if output.IsJSONMode() || !term.IsTerminal(os.Stdout.Fd()) || !term.IsTerminal(os.Stderr.Fd()) {
+		return func() {}
+	}
+
+	done := make(chan struct{})
+	go func() {
+		frames := []string{"|", "/", "-", `\`}
+		ticker := time.NewTicker(120 * time.Millisecond)
+		defer ticker.Stop()
+
+		i := 0
+		for {
+			select {
+			case <-done:
+				fmt.Fprint(os.Stderr, "\r\033[K")
+				return
+			case <-ticker.C:
+				fmt.Fprintf(os.Stderr, "\r%s Scanning skills...", frames[i%len(frames)])
+				i++
+			}
+		}
+	}()
+
+	return func() {
+		close(done)
+	}
 }
 
 func renderSkillsTable(skills []discover.SkillInfo, manifest *manage.SkillsManifest, updateCache *manage.UpdateCheckCache, home string) {
